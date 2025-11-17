@@ -1,0 +1,16 @@
+{
+  "name": "gami-vaults-tracker-bot",
+  "version": "1.0.0",
+  "description": "Track all deposits and withdrawals on Gami vaults using Etherscan v2",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}
