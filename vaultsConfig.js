@@ -71,7 +71,8 @@ export const VAULTS = [
     trackedMethodsMap: {
       "0x85b77f45": "Request Deposit",
       "0xa5948c89": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw"
+      "0x7d41c86e": "Request Withdraw",
+      "0x5cfe2fe4": "Request Withdraw"
     }
   },
   {
