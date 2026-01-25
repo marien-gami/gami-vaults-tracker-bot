@@ -474,16 +474,31 @@ async function processVault(vault) {
       }
     }
 
-    // Amount from ERC20 transfers - improved multi-strategy approach
+    // Amount detection - prioritize input data decoding for reliability
     const actionLower = (actionType || "").toLowerCase();
     let picked = null;
 
     const isDeposit = actionLower.includes("deposit");
-    const isWithdraw = actionLower.includes("withdraw");
+    const isWithdraw = actionLower.includes("withdraw") || actionLower.includes("redeem");
 
-    // Strategy 1: transfers involving the vault/controller address
+    // Strategy 1 (PRIMARY): decode amount from transaction input data
+    // This is the most reliable source - the actual parameter passed to the function
+    const inputData = tx.input || tx.data;
+    if (inputData) {
+      const decodedAmount = decodeAmountFromInput(inputData);
+      if (decodedAmount !== null && decodedAmount > 0n) {
+        // Use the underlying token (first in trackedTokens) for user-friendly display
+        picked = {
+          raw: decodedAmount,
+          dec: preferredMeta?.tokenDecimals ?? 18,
+          sym: preferredMeta?.tokenSymbol ?? "TOKEN"
+        };
+      }
+    }
+
+    // Strategy 2: transfers involving the vault/controller address
     const evVault = transfersByHashVault.get(hashLc);
-    if (evVault) {
+    if (!picked && evVault) {
       if (isDeposit) {
         // For deposits: tokens typically flow IN to the vault
         picked = pickTokenFlow(evVault, preferredToken, "in");
@@ -500,7 +515,7 @@ async function processVault(vault) {
       }
     }
 
-    // Strategy 2: transfers involving the transaction sender (without direction filter)
+    // Strategy 3: transfers involving the transaction sender (without direction filter)
     if (!picked && (isDeposit || isWithdraw)) {
       // Fetch ALL transfers for the sender (no direction filter for broader coverage)
       const transfersByHashUser = await fetchErc20TransfersAggregatedForAddress({
@@ -523,37 +538,12 @@ async function processVault(vault) {
       }
     }
 
-    // Strategy 3: pick the largest token flow from any source as last resort
+    // Strategy 4: pick the largest token flow from any source as last resort
     if (!picked && evVault) {
       picked = pickTokenFlow(evVault, preferredToken, "in");
       const outPicked = pickTokenFlow(evVault, preferredToken, "out");
       if (outPicked && (!picked || outPicked.raw > picked.raw)) {
         picked = outPicked;
-      }
-    }
-
-    // Strategy 4: decode amount from transaction input data (e.g., for claimSharesAndRequestRedeem)
-    if (!picked && tx.input) {
-      const decodedAmount = decodeAmountFromInput(tx.input);
-      if (decodedAmount !== null && decodedAmount > 0n) {
-        // For withdrawals, the input is typically shares (vault token), so use vault token decimals
-        // Find the vault share token (usually the second token in trackedTokens, matching vault address)
-        const vaultTokenAddr = normalizeEvmAddress(vault.vaultAddress);
-        const vaultTokenMeta = metaByAddr[vaultTokenAddr];
-        if (vaultTokenMeta) {
-          picked = {
-            raw: decodedAmount,
-            dec: vaultTokenMeta.tokenDecimals,
-            sym: vaultTokenMeta.tokenSymbol
-          };
-        } else {
-          // Fallback to preferred token if vault token not found
-          picked = {
-            raw: decodedAmount,
-            dec: preferredMeta?.tokenDecimals ?? 18,
-            sym: preferredMeta?.tokenSymbol ?? "TOKEN"
-          };
-        }
       }
     }
 
