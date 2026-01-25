@@ -99,6 +99,22 @@ function trimZeros(s) {
   return s;
 }
 
+// Decode amount from transaction input data (first uint256 parameter after method ID)
+function decodeAmountFromInput(inputData) {
+  if (!inputData || typeof inputData !== 'string') return null;
+  const data = inputData.toLowerCase();
+  // Input format: 0x + 8 hex chars (method ID) + 64 hex chars (uint256 param)
+  if (data.length < 74) return null; // 2 + 8 + 64 = 74 minimum
+
+  try {
+    // Extract first uint256 parameter (bytes 4-36, or hex chars 10-74)
+    const amountHex = data.slice(10, 74);
+    return BigInt('0x' + amountHex);
+  } catch {
+    return null;
+  }
+}
+
 function normalizeHexSelector(s) {
   if (!s) return "";
   const t = String(s).trim().toLowerCase();
@@ -513,6 +529,31 @@ async function processVault(vault) {
       const outPicked = pickTokenFlow(evVault, preferredToken, "out");
       if (outPicked && (!picked || outPicked.raw > picked.raw)) {
         picked = outPicked;
+      }
+    }
+
+    // Strategy 4: decode amount from transaction input data (e.g., for claimSharesAndRequestRedeem)
+    if (!picked && tx.input) {
+      const decodedAmount = decodeAmountFromInput(tx.input);
+      if (decodedAmount !== null && decodedAmount > 0n) {
+        // For withdrawals, the input is typically shares (vault token), so use vault token decimals
+        // Find the vault share token (usually the second token in trackedTokens, matching vault address)
+        const vaultTokenAddr = normalizeEvmAddress(vault.vaultAddress);
+        const vaultTokenMeta = metaByAddr[vaultTokenAddr];
+        if (vaultTokenMeta) {
+          picked = {
+            raw: decodedAmount,
+            dec: vaultTokenMeta.tokenDecimals,
+            sym: vaultTokenMeta.tokenSymbol
+          };
+        } else {
+          // Fallback to preferred token if vault token not found
+          picked = {
+            raw: decodedAmount,
+            dec: preferredMeta?.tokenDecimals ?? 18,
+            sym: preferredMeta?.tokenSymbol ?? "TOKEN"
+          };
+        }
       }
     }
 
