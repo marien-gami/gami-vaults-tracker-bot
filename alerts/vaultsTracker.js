@@ -205,24 +205,35 @@ async function routescanFetchJson(url) {
   return await res.json();
 }
 
-// -------- Routescan: address transactions --------
+// -------- Routescan: address transactions (etherscan-style API for input data) --------
 
 async function fetchAddressTransactions({ chainId, address }) {
+  // Use etherscan-style API which returns the "input" field needed for amount decoding
   const u = new URL(
-    `${ROUTESCAN_API_URL}/v2/network/${ROUTESCAN_NETWORK_ID}/evm/${chainId}/address/${address}/transactions`
+    `${ROUTESCAN_API_URL}/v2/network/${ROUTESCAN_NETWORK_ID}/evm/${chainId}/etherscan/api`
   );
 
-  // keep only EVM txs
-  u.searchParams.set("categories", "evm_tx");
+  u.searchParams.set("module", "account");
+  u.searchParams.set("action", "txlist");
+  u.searchParams.set("address", address);
+  u.searchParams.set("startblock", "0");
+  u.searchParams.set("endblock", "99999999");
+  u.searchParams.set("page", "1");
+  u.searchParams.set("offset", String(ROUTESCAN_TX_LIMIT));
   u.searchParams.set("sort", "desc");
-  u.searchParams.set("limit", String(ROUTESCAN_TX_LIMIT));
-
-  // optional: received | sent
-  const direction = (process.env.ROUTESCAN_TX_DIRECTION || "").trim();
-  if (direction) u.searchParams.set("direction", direction);
 
   const json = await routescanFetchJson(u.toString());
-  return parseRows(json);
+  const rows = parseRows(json);
+
+  // Normalize field names to match expected format
+  return rows.map(tx => ({
+    ...tx,
+    id: tx.hash,
+    index: Number(tx.transactionIndex || 0),
+    timestamp: tx.timeStamp ? new Date(Number(tx.timeStamp) * 1000).toISOString() : null,
+    method: tx.functionName || tx.methodId || "unknown",
+    status: tx.txreceipt_status === "1" && tx.isError !== "1"
+  }));
 }
 
 // -------- Routescan: address ERC20 transfers (for amount) --------
@@ -251,8 +262,11 @@ function getTrackedTokenMeta(vault) {
   }
 
   const tokenSet = new Set(addrs);
-  const preferredToken = addrs[0] || "";
-  return { tokenSet, preferredToken, metaByAddr };
+  // First token = underlying asset (USDC, WBTC, etc.) - used for deposits
+  const underlyingToken = addrs[0] || "";
+  // Second token = vault shares (gamiUSDC, etc.) - used for withdraws
+  const sharesToken = addrs[1] || addrs[0] || "";
+  return { tokenSet, underlyingToken, sharesToken, metaByAddr };
 }
 
 // Fetch + aggregate ERC20 transfers for a given address.
@@ -393,8 +407,10 @@ async function processVault(vault) {
   }
 
   // token meta + optional amount sources (ERC20 transfers)
-  const { tokenSet, preferredToken, metaByAddr } = getTrackedTokenMeta(vault);
-  const preferredMeta = preferredToken ? metaByAddr[preferredToken] : null;
+  // underlyingToken = USDC/WBTC/etc (for deposits), sharesToken = vault shares (for withdraws)
+  const { tokenSet, underlyingToken, sharesToken, metaByAddr } = getTrackedTokenMeta(vault);
+  const underlyingMeta = underlyingToken ? metaByAddr[underlyingToken] : null;
+  const sharesMeta = sharesToken ? metaByAddr[sharesToken] : null;
 
   const transfersByHashVault = await fetchErc20TransfersAggregatedForAddress({
     chainId,
@@ -487,31 +503,37 @@ async function processVault(vault) {
     if (inputData) {
       const decodedAmount = decodeAmountFromInput(inputData);
       if (decodedAmount !== null && decodedAmount > 0n) {
-        // Use the underlying token (first in trackedTokens) for user-friendly display
+        // For deposits: parameter is in underlying token (USDC, WBTC, etc.)
+        // For withdraws: parameter is in vault shares (gamiUSDC, etc.)
+        const tokenMeta = isWithdraw ? sharesMeta : underlyingMeta;
         picked = {
           raw: decodedAmount,
-          dec: preferredMeta?.tokenDecimals ?? 18,
-          sym: preferredMeta?.tokenSymbol ?? "TOKEN"
+          dec: tokenMeta?.tokenDecimals ?? 18,
+          sym: tokenMeta?.tokenSymbol ?? "TOKEN"
         };
       }
     }
+
+    // Choose the appropriate token based on action type
+    const preferredToken = isWithdraw ? sharesToken : underlyingToken;
+    const preferredMeta = isWithdraw ? sharesMeta : underlyingMeta;
 
     // Strategy 2: transfers involving the vault/controller address
     const evVault = transfersByHashVault.get(hashLc);
     if (!picked && evVault) {
       if (isDeposit) {
         // For deposits: tokens typically flow IN to the vault
-        picked = pickTokenFlow(evVault, preferredToken, "in");
+        picked = pickTokenFlow(evVault, underlyingToken, "in");
         // Fallback: try "out" in case tracking is different (e.g., shares minted)
-        if (!picked) picked = pickTokenFlow(evVault, preferredToken, "out");
+        if (!picked) picked = pickTokenFlow(evVault, underlyingToken, "out");
       } else if (isWithdraw) {
         // For withdraws: tokens typically flow OUT of the vault
-        picked = pickTokenFlow(evVault, preferredToken, "out");
-        if (!picked) picked = pickTokenFlow(evVault, preferredToken, "in");
+        picked = pickTokenFlow(evVault, sharesToken, "out");
+        if (!picked) picked = pickTokenFlow(evVault, sharesToken, "in");
       } else {
-        // Unknown action: try both directions
-        picked = pickTokenFlow(evVault, preferredToken, "in");
-        if (!picked) picked = pickTokenFlow(evVault, preferredToken, "out");
+        // Unknown action: try both directions with underlying token
+        picked = pickTokenFlow(evVault, underlyingToken, "in");
+        if (!picked) picked = pickTokenFlow(evVault, underlyingToken, "out");
       }
     }
 
@@ -527,13 +549,13 @@ async function processVault(vault) {
       const evUser = transfersByHashUser.get(hashLc);
       if (evUser) {
         if (isDeposit) {
-          // User sends tokens OUT for deposit
-          picked = pickTokenFlow(evUser, preferredToken, "out");
-          if (!picked) picked = pickTokenFlow(evUser, preferredToken, "in");
+          // User sends underlying tokens OUT for deposit
+          picked = pickTokenFlow(evUser, underlyingToken, "out");
+          if (!picked) picked = pickTokenFlow(evUser, underlyingToken, "in");
         } else {
-          // User receives tokens IN for withdraw
-          picked = pickTokenFlow(evUser, preferredToken, "in");
-          if (!picked) picked = pickTokenFlow(evUser, preferredToken, "out");
+          // User burns shares for withdraw
+          picked = pickTokenFlow(evUser, sharesToken, "in");
+          if (!picked) picked = pickTokenFlow(evUser, sharesToken, "out");
         }
       }
     }
