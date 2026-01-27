@@ -197,7 +197,7 @@ export const VAULTS = [
   {
     name: "Gami MSA Def",
     vaultAddress: "0xb725f2277f3f62ad017a6dc418433b326a9f6334",
-    chainId: 1,
+    chainId: 8453,
     trackedTokens: [
       {
         tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
@@ -221,7 +221,7 @@ export const VAULTS = [
   {
     name: "Gami MSA Dyn",
     vaultAddress: "0xf56bfe07b8d6e6d74258cdb6969a633629b06b08",
-    chainId: 1,
+    chainId: 8453,
     trackedTokens: [
       {
         tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
