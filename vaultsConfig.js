@@ -301,7 +301,7 @@ export const VAULTS = [
     }
   },
   {
-    name: "Gami Spectra Metavault",
+    name: "Gami Spectra USDC Metavault",
     vaultAddress: "0x776F95321a0285F8BCde149E3264D16DC08da69a",
     chainId: 8453,
     trackedTokens: [
@@ -314,7 +314,47 @@ export const VAULTS = [
       {
         tokenAddress: "0x776F95321a0285F8BCde149E3264D16DC08da69a", // gamiSpectraUSDC
         tokenSymbol: "gamiSpectraUSDC",
-        tokenDecimals: 18,
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      // Ce vault utilise les topics ERC-7540 standard (uint256 requestId)
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiSpectraUSDC
+      },
+    }
+  },
+  {
+    name: "Gami Spectra XRP Metavault",
+    vaultAddress: "0x6420a613e936602ca3f1ad5680b3f4d47d473bf1",
+    chainId: 14,
+    trackedTokens: [
+      {
+        tokenAddress: "0xAd552A648C74D49E10027AB8a618A3ad4901c5bE", // FXRP
+        tokenSymbol: "FXRP",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x4C18Ff3C89632c3Dd62E796c0aFA5c07c4c1B2b3", // FXRP
+        tokenSymbol: "stXRP",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x6420A613e936602Ca3f1AD5680b3F4d47D473bf1", // gamiSpectraXRP
+        tokenSymbol: "gamiSpectraXRP",
+        tokenDecimals: 6,
         minAmount: 0
       },
     ],
