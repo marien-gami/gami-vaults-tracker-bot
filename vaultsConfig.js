@@ -24,17 +24,6 @@ const TOPIC_ERC4626_DEPOSIT =
 const TOPIC_ERC4626_WITHDRAW =
   "0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db";
 
-// ── Topics Gami async vaults — implémentation custom (uint40 epochId) ────────
-// DepositRequest(address indexed controller, address indexed owner, uint40 indexed epochId, address sender, uint256 assets)
-// data = [sender (address, slot 0), assets (uint256, slot 1)]
-const TOPIC_GAMI_DEPOSIT_REQUEST =
-  "0xb8d4ce171fd9025cee49807119bdabcf1f44e7ef94ba2264e1771bb13559d83c";
-
-// RedeemRequest(address indexed controller, address indexed owner, uint40 indexed epochId, address sender, uint256 shares)
-// data = [sender (address, slot 0), shares (uint256, slot 1)]
-const TOPIC_GAMI_REDEEM_REQUEST =
-  "0x4629445fb0a7bc033f1c5edb3a336c46480bc798d388fa78f7257bb40e8f93b9";
-
 // ── Topics ERC-7540 standard (uint256 requestId) ─────────────────────────────
 // DepositRequest(address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 assets)
 // data = [sender (address, slot 0), assets (uint256, slot 1)]
@@ -132,14 +121,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      // DepositRequest couvre les deux variants requestDeposit (avec ou sans referral)
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1, // topics[1] = controller
         amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
         amountTokenIndex: 0  // USDC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1, // topics[1] = controller
         amountDataSlot: 1,   // data[0] = sender, data[1] = shares
@@ -166,13 +154,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // WBTC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -199,13 +187,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // USDC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -232,13 +220,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // USDC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -265,13 +253,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // hemiBTC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -298,13 +286,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // WETH
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -365,13 +353,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // USDC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -398,13 +386,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // USDC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
@@ -431,13 +419,13 @@ export const VAULTS = [
       },
     ],
     trackedEventsMap: {
-      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
         action: "Request Deposit",
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 0  // USDC
       },
-      [TOPIC_GAMI_REDEEM_REQUEST]: {
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
         action: "Request Withdraw",
         callerTopicIndex: 1,
         amountDataSlot: 1,
