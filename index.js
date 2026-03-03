@@ -2,9 +2,9 @@
 import "dotenv/config";
 import { startVaultsTracker } from "./alerts/vaultsTracker.js";
 
-function main() {
+async function main() {
   console.log("🤖 gami-vaults-tracker-bot booting...");
-  startVaultsTracker();
+  await startVaultsTracker();
 }
 
-main();
+main().catch(console.error);

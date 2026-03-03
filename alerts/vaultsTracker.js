@@ -1,16 +1,25 @@
-// alerts/vaultsTracker.js - Version améliorée
+// alerts/vaultsTracker.js — Version block polling via eth_getBlockByNumber
+//
+// Stratégie :
+//   1. eth_blockNumber pour connaître le bloc courant (par chain)
+//   2. eth_getBlockByNumber(blockNum, true) pour chaque nouveau bloc → liste les txs
+//   3. Filtre tx.to contre les adresses de vault trackées
+//   4. eth_getTransactionReceipt pour les txs correspondantes → logs d'events
+//   5. Matching par topic0 (trackedEventsMap) → décodage du montant
+//
+// Note : getLogs et txlist ne sont PAS utilisés car Routescan présente un lag
+// d'indexation d'environ 1 mois pour ces endpoints. Seuls les appels RPC directs
+// (eth_getBlockByNumber, eth_getTransactionReceipt) sont temps réel.
+
 import "dotenv/config";
 import { sendTelegramMessage } from "../telegram.js";
 import { VAULTS } from "../vaultsConfig.js";
 
 const chatId = process.env.CHAT_ID;
 
-// Routescan v2 base
 const ROUTESCAN_API_URL =
   process.env.ROUTESCAN_API_URL || "https://api.routescan.io";
 const ROUTESCAN_API_KEY = process.env.ROUTESCAN_API_KEY;
-
-// Path param: /v2/network/{networkId}/... -> mainnet | testnet | debug
 const ROUTESCAN_NETWORK_ID = process.env.ROUTESCAN_NETWORK_ID || "mainnet";
 
 const CHECK_INTERVAL_SECONDS = parseInt(
@@ -19,77 +28,30 @@ const CHECK_INTERVAL_SECONDS = parseInt(
 );
 const CHECK_EVERY_MS = CHECK_INTERVAL_SECONDS * 1000;
 
-// throttle simple pour éviter les rate limits
 const ROUTESCAN_DELAY_MS = parseInt(
   process.env.ROUTESCAN_DELAY_MS || "300",
   10
 );
 
-const ROUTESCAN_TX_LIMIT = parseInt(
-  process.env.ROUTESCAN_TX_LIMIT || "50",
+// Nombre maximum de blocs traités par tick (par chain)
+const MAX_BLOCKS_PER_TICK = parseInt(
+  process.env.MAX_BLOCKS_PER_TICK || "50",
   10
 );
 
-const ROUTESCAN_ERC20_LIMIT = parseInt(
-  process.env.ROUTESCAN_ERC20_LIMIT || "150",
-  10
-);
+// pointeurs par chain : chainId → nextBlock (number)
+const chainPointers = new Map();
 
-// Cache ERC20 transfers per address to avoid extra API calls during a tick
-const ERC20_CACHE_TTL_MS = parseInt(
-  process.env.ERC20_CACHE_TTL_MS || "20000",
-  10
-);
+// anti-doublons : "chainId:txHash:logIndex"
+const seenKeys = new Set();
 
-const erc20TransfersCache = new Map(); // key -> { ts, map }
-
-// timestamp de démarrage du process (pour ne jamais envoyer des tx "d'avant")
-const BOT_START_TS = Date.now();
-
-// pointeurs en mémoire: key = vaultAddress -> "block:txIndex"
-const pointers = new Map();
-
-// anti-doublons: key = vaultAddress -> Set(hash)
-const seenHashes = new Map();
+// verrou pour éviter les ticks overlappants
+let tickRunning = false;
 
 // -------- Helpers --------
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Adresse utilisée pour scanner les tx + transferts
-// (txScanAddress si défini, sinon controller si défini, sinon vault)
-function getScanAddress(vault) {
-  return vault.txScanAddress || vault.controllerAddress || vault.vaultAddress;
-}
-
-function parseRows(raw) {
-  try {
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw;
-    if (Array.isArray(raw.items)) return raw.items;
-    if (Array.isArray(raw.result)) return raw.result;
-  } catch (e) {
-    // ignore
-  }
-  return [];
-}
-
-// Parse "NNNN:LL" -> { have, block, index }
-function parsePointer(ptr) {
-  if (typeof ptr !== "string") {
-    return { have: false, block: 0, index: -1 };
-  }
-  const m = /^(\d+):(\d+)$/.exec(ptr.trim());
-  if (!m) {
-    return { have: false, block: 0, index: -1 };
-  }
-  return {
-    have: true,
-    block: parseInt(m[1], 10),
-    index: parseInt(m[2], 10)
-  };
 }
 
 function trimZeros(s) {
@@ -99,602 +61,335 @@ function trimZeros(s) {
   return s;
 }
 
-// Decode amount from transaction input data (first uint256 parameter after method ID)
-function decodeAmountFromInput(inputData) {
-  if (!inputData || typeof inputData !== 'string') return null;
-  const data = inputData.toLowerCase();
-  // Input format: 0x + 8 hex chars (method ID) + 64 hex chars (uint256 param)
-  if (data.length < 74) return null; // 2 + 8 + 64 = 74 minimum
+function getEmojiForAction(actionType) {
+  const type = (actionType || "").toLowerCase();
+  if (type.includes("request deposit")) return "🟡";
+  if (type.includes("request withdraw")) return "🟠";
+  if (type.includes("deposit")) return "🟢";
+  if (type.includes("withdraw") || type.includes("redeem")) return "🔴";
+  return "⚪";
+}
 
+// Décode une adresse EVM depuis un topic 32 bytes (prend les 20 derniers bytes)
+function decodeAddressFromTopic(topic) {
+  if (!topic || typeof topic !== "string") return "";
+  const hex = topic.replace("0x", "");
+  if (hex.length < 40) return "";
+  return ("0x" + hex.slice(-40)).toLowerCase();
+}
+
+// Décode un uint256 depuis les données ABI-encodées à un slot donné (0-based)
+function decodeUint256FromData(data, slotIndex = 0) {
+  if (!data || typeof data !== "string") return null;
+  const hex = data.replace("0x", "");
+  const start = slotIndex * 64;
+  const chunk = hex.slice(start, start + 64);
+  if (chunk.length < 64) return null;
   try {
-    // Extract first uint256 parameter (bytes 4-36, or hex chars 10-74)
-    const amountHex = data.slice(10, 74);
-    return BigInt('0x' + amountHex);
+    return BigInt("0x" + chunk);
   } catch {
     return null;
   }
 }
 
-function normalizeHexSelector(s) {
-  if (!s) return "";
-  const t = String(s).trim().toLowerCase();
-  // expect 0x + 8 hex chars (4 bytes)
-  const m = /^0x[0-9a-f]{8}$/.exec(t);
-  return m ? t : "";
-}
+// -------- Routescan RPC (proxy module) --------
 
-function normalizeMethodName(s) {
-  return (s || "").toString().trim().toLowerCase();
-}
-
-// Nouvelle fonction : déterminer le type d'action depuis trackedMethodsMap
-function getActionType(tx, vault) {
-  if (!vault.trackedMethodsMap || typeof vault.trackedMethodsMap !== 'object') {
-    return null;
-  }
-
-  const txMethodId = normalizeHexSelector(tx.methodId);
-  const txMethod = normalizeMethodName(tx.method);
-
-  // Parcourir la map de configuration
-  for (const [key, actionType] of Object.entries(vault.trackedMethodsMap)) {
-    const keyLower = key.toLowerCase().trim();
-
-    // Si la clé est un method ID (commence par 0x)
-    if (keyLower.startsWith('0x')) {
-      const normalizedKey = normalizeHexSelector(keyLower);
-      if (normalizedKey && txMethodId === normalizedKey) {
-        return actionType;
-      }
-    }
-    // Sinon c'est un nom de méthode
-    else {
-      if (!txMethod) continue;
-
-      // Match exact
-      if (txMethod === keyLower) {
-        return actionType;
-      }
-
-      // Match avec signature de fonction (ex: "requestDeposit(uint256,address)")
-      if (txMethod.startsWith(`${keyLower}(`)) {
-        return actionType;
-      }
-    }
-  }
-
-  return null;
-}
-
-// Fonction pour obtenir l'emoji selon le type d'action
-function getEmojiForAction(actionType) {
-  const type = (actionType || "").toLowerCase();
-
-  if (type.includes("request deposit")) return "🟡"; // Jaune pour request deposit
-  if (type.includes("request withdraw")) return "🟠"; // Orange pour request withdraw
-  if (type.includes("deposit")) return "🟢"; // Vert pour deposit direct
-  if (type.includes("withdraw") || type.includes("redeem")) return "🔴"; // Rouge pour withdraw direct
-
-  return "⚪"; // Blanc par défaut
-}
-
-function toMs(ts) {
-  const t = Date.parse(ts);
-  return Number.isFinite(t) ? t : 0;
-}
-
-async function routescanFetchJson(url) {
+async function rpcFetch(chainId, params) {
   if (!ROUTESCAN_API_KEY) {
-    throw new Error("ROUTESCAN_API_KEY missing in .env (header: apikey)");
+    throw new Error("ROUTESCAN_API_KEY missing in .env");
   }
-
-  // throttle simple
   await sleep(ROUTESCAN_DELAY_MS);
-
-  const res = await fetch(url, {
-    headers: {
-      apikey: ROUTESCAN_API_KEY
-    }
+  const u = new URL(
+    `${ROUTESCAN_API_URL}/v2/network/${ROUTESCAN_NETWORK_ID}/evm/${chainId}/etherscan/api`
+  );
+  u.searchParams.set("module", "proxy");
+  for (const [k, v] of Object.entries(params)) {
+    u.searchParams.set(k, String(v));
+  }
+  const res = await fetch(u.toString(), {
+    headers: { apikey: ROUTESCAN_API_KEY }
   });
-
   if (!res.ok) {
     console.error("❌ Routescan HTTP error:", res.status, await res.text());
     return null;
   }
-
-  return await res.json();
+  const json = await res.json();
+  return json?.result ?? null;
 }
 
-// -------- Routescan: address transactions (etherscan-style API for input data) --------
-
-async function fetchAddressTransactions({ chainId, address }) {
-  // Use etherscan-style API which returns the "input" field needed for amount decoding
-  const u = new URL(
-    `${ROUTESCAN_API_URL}/v2/network/${ROUTESCAN_NETWORK_ID}/evm/${chainId}/etherscan/api`
-  );
-
-  u.searchParams.set("module", "account");
-  u.searchParams.set("action", "txlist");
-  u.searchParams.set("address", address);
-  u.searchParams.set("startblock", "0");
-  u.searchParams.set("endblock", "99999999");
-  u.searchParams.set("page", "1");
-  u.searchParams.set("offset", String(ROUTESCAN_TX_LIMIT));
-  u.searchParams.set("sort", "desc");
-
-  const json = await routescanFetchJson(u.toString());
-  const rows = parseRows(json);
-
-  // Normalize field names to match expected format
-  return rows.map(tx => ({
-    ...tx,
-    id: tx.hash,
-    index: Number(tx.transactionIndex || 0),
-    timestamp: tx.timeStamp ? new Date(Number(tx.timeStamp) * 1000).toISOString() : null,
-    method: tx.functionName || tx.methodId || "unknown",
-    status: tx.txreceipt_status === "1" && tx.isError !== "1"
-  }));
+async function getCurrentBlock(chainId) {
+  const result = await rpcFetch(chainId, { action: "eth_blockNumber" });
+  if (!result) return 0;
+  return parseInt(result, 16);
 }
 
-// -------- Routescan: address ERC20 transfers (for amount) --------
-
-// Normalize & validate EVM address (lowercase). Returns "" if invalid.
-function normalizeEvmAddress(addr) {
-  if (!addr) return "";
-  const a = String(addr).trim().toLowerCase();
-  return /^0x[0-9a-f]{40}$/.test(a) ? a : "";
+// Retourne le bloc avec ses transactions complètes (boolean=true → full tx objects)
+async function getBlockByNumber(chainId, blockNumber) {
+  const tag = "0x" + blockNumber.toString(16);
+  return rpcFetch(chainId, {
+    action: "eth_getBlockByNumber",
+    tag,
+    boolean: "true"
+  });
 }
 
-function getTrackedTokenMeta(vault) {
-  const tokens = Array.isArray(vault.trackedTokens) ? vault.trackedTokens : [];
-  const metaByAddr = {};
-  const addrs = [];
-
-  for (const t of tokens) {
-    const a = normalizeEvmAddress(t?.tokenAddress);
-    if (!a) continue;
-    addrs.push(a);
-    metaByAddr[a] = {
-      tokenSymbol: t?.tokenSymbol || "TOKEN",
-      tokenDecimals: Number(t?.tokenDecimals ?? 18) || 18,
-      minAmount: Number(t?.minAmount ?? 0) || 0
-    };
-  }
-
-  const tokenSet = new Set(addrs);
-  // First token = underlying asset (USDC, WBTC, etc.) - used for deposits
-  const underlyingToken = addrs[0] || "";
-  // Second token = vault shares (gamiUSDC, etc.) - used for withdraws
-  const sharesToken = addrs[1] || addrs[0] || "";
-  return { tokenSet, underlyingToken, sharesToken, metaByAddr };
+// Retourne le receipt d'une transaction (logs inclus)
+async function getTransactionReceipt(chainId, txHash) {
+  return rpcFetch(chainId, {
+    action: "eth_getTransactionReceipt",
+    txhash: txHash
+  });
 }
 
-// Fetch + aggregate ERC20 transfers for a given address.
-// Returns: Map(txHashLc -> { hash, blockNumber, logIndex, timeMs, byToken: { [tokenAddrLc]: { in,out,dec,sym } } })
-async function fetchErc20TransfersAggregatedForAddress({
-  chainId,
-  address,
-  tokenSet,
-  direction = ""
-}) {
-  const scanAddr = normalizeEvmAddress(address);
-  if (!scanAddr) return new Map();
-  if (!tokenSet || tokenSet.size === 0) return new Map();
+// -------- Traitement d'un log --------
 
-  const cacheKey = `${chainId}:${scanAddr}:${direction}`;
-  const cached = erc20TransfersCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < ERC20_CACHE_TTL_MS) {
-    return cached.map;
-  }
-
-  const u = new URL(
-    `${ROUTESCAN_API_URL}/v2/network/${ROUTESCAN_NETWORK_ID}/evm/${chainId}/address/${scanAddr}/erc20-transfers`
-  );
-
-  u.searchParams.set("limit", String(ROUTESCAN_ERC20_LIMIT));
-  if (direction) u.searchParams.set("direction", direction);
-
-  const json = await routescanFetchJson(u.toString());
-  const rows = parseRows(json);
-
-  const SCAN_LC = scanAddr.toLowerCase();
+// Construit la map topic0 → config pour un vault (lowercase keys)
+function buildTopicMap(vault) {
   const map = new Map();
-
-  for (const tr of rows) {
-    const tokenAddr = normalizeEvmAddress(tr.tokenAddress);
-    if (!tokenAddr) continue;
-    if (!tokenSet.has(tokenAddr)) continue;
-
-    const hash = (tr.txHash || tr.id || "").toString();
-    const hashLc = hash.toLowerCase();
-    if (!hashLc) continue;
-
-    const blockNumber = Number(tr.blockNumber || 0);
-    const logIndex = Number(tr.logIndex || 0);
-    const timeMs = toMs(tr.timestamp || tr.createdAt);
-
-    const dec = Number(tr.tokenDecimals ?? 18) || 18;
-    const sym = tr.tokenSymbol || "TOKEN";
-
-    let valueRaw = 0n;
-    try {
-      valueRaw = BigInt(tr.amount || "0");
-    } catch {
-      valueRaw = 0n;
-    }
-
-    const fromLc = normalizeEvmAddress(tr.from) || (tr.from || "").toLowerCase();
-    const toLc = normalizeEvmAddress(tr.to) || (tr.to || "").toLowerCase();
-
-    let ev = map.get(hashLc);
-    if (!ev) {
-      ev = {
-        hash,
-        blockNumber,
-        logIndex,
-        timeMs,
-        byToken: {}
-      };
-    } else {
-      // same tx: keep max for safety
-      if (blockNumber > ev.blockNumber) ev.blockNumber = blockNumber;
-      if (logIndex > ev.logIndex) ev.logIndex = logIndex;
-      if (timeMs > ev.timeMs) ev.timeMs = timeMs;
-    }
-
-    if (!ev.byToken[tokenAddr]) {
-      ev.byToken[tokenAddr] = { in: 0n, out: 0n, dec, sym };
-    } else {
-      // keep latest meta
-      ev.byToken[tokenAddr].dec = dec;
-      ev.byToken[tokenAddr].sym = sym;
-    }
-
-    // relative flows vs scanAddr
-    if (toLc === SCAN_LC) {
-      ev.byToken[tokenAddr].in += valueRaw;
-    }
-    if (fromLc === SCAN_LC) {
-      ev.byToken[tokenAddr].out += valueRaw;
-    }
-
-    map.set(hashLc, ev);
+  for (const [topic, config] of Object.entries(vault.trackedEventsMap || {})) {
+    map.set(topic.toLowerCase(), config);
   }
-
-  erc20TransfersCache.set(cacheKey, { ts: Date.now(), map });
   return map;
 }
 
-function pickTokenFlow(ev, preferredTokenAddr, flowKey) {
-  if (!ev || !ev.byToken) return null;
+function processLog({ vault, topicMap, tx, log, chainId, blockTimestamp }) {
+  const vaultAddrLc = vault.vaultAddress.toLowerCase();
+  const logAddr = (log.address || "").toLowerCase();
+  if (logAddr !== vaultAddrLc) return null;
 
-  const pref = preferredTokenAddr && ev.byToken[preferredTokenAddr];
-  if (pref && (pref[flowKey] ?? 0n) > 0n) {
-    return { raw: pref[flowKey], dec: pref.dec ?? 18, sym: pref.sym || "TOKEN" };
+  const logTopic0 = (log.topics?.[0] || "").toLowerCase();
+  const eventConfig = topicMap.get(logTopic0);
+  if (!eventConfig) return null;
+
+  const txHashLc = (tx.hash || "").toLowerCase();
+  const logIndex = parseInt(log.logIndex || "0x0", 16);
+  const dedupKey = `${chainId}:${txHashLc}:${logIndex}`;
+  if (seenKeys.has(dedupKey)) return null;
+  seenKeys.add(dedupKey);
+
+  const actionType = eventConfig.action ?? "Unknown";
+
+  // Adresse appelante (depuis topics si indexée, sinon depuis tx.from)
+  const callerTopicIdx = eventConfig.callerTopicIndex ?? 1;
+  const callerTopic = log.topics?.[callerTopicIdx];
+  const from = callerTopic
+    ? decodeAddressFromTopic(callerTopic)
+    : (tx.from || "").toLowerCase();
+
+  // Whitelist
+  const whitelist = Array.isArray(vault.whitelistedAddresses)
+    ? vault.whitelistedAddresses.map((a) => a.toLowerCase())
+    : [];
+  if (whitelist.length > 0 && from && whitelist.includes(from)) {
+    console.log(`[${vault.name}] event ignoré (adresse whitelistée): ${from}`);
+    return null;
   }
 
-  let best = null;
-  let bestRaw = 0n;
-  for (const t of Object.values(ev.byToken)) {
-    const raw = t?.[flowKey] ?? 0n;
-    if (raw > bestRaw) {
-      bestRaw = raw;
-      best = { raw, dec: t.dec ?? 18, sym: t.sym || "TOKEN" };
-    }
+  // Montant
+  const tokens = Array.isArray(vault.trackedTokens) ? vault.trackedTokens : [];
+  const amountDataSlot = eventConfig.amountDataSlot ?? 0;
+  const rawAmount = decodeUint256FromData(log.data, amountDataSlot);
+
+  const tokenIdx = eventConfig.amountTokenIndex ?? 0;
+  const tokenMeta = tokens[tokenIdx] ?? tokens[0];
+  const dec = Number(tokenMeta?.tokenDecimals ?? 18);
+  const sym = tokenMeta?.tokenSymbol ?? "TOKEN";
+  const minAmount = Number(tokenMeta?.minAmount ?? 0);
+
+  let amountStr = "N/A";
+  if (rawAmount !== null) {
+    const amountNum = Number(rawAmount) / Math.pow(10, dec);
+    if (minAmount > 0 && amountNum < minAmount) return null;
+    amountStr = trimZeros(amountNum.toFixed(Math.min(dec, 8)));
+  } else if (minAmount > 0) {
+    return null;
   }
 
-  return best;
+  const blockNumber = parseInt(tx.blockNumber || "0x0", 16);
+  const timeMs = parseInt(blockTimestamp || "0x0", 16) * 1000;
+  const whenIso = new Date(timeMs || Date.now()).toISOString();
+
+  return {
+    blockNumber,
+    logIndex,
+    vaultName: vault.name,
+    type: actionType,
+    symbol: sym,
+    amount: amountStr,
+    from,
+    hash: tx.hash,
+    time: whenIso,
+    chainId
+  };
 }
 
-// -------- Traitement d'un vault --------
+// -------- Tick par chain --------
 
-async function processVault(vault) {
-  const vaultKey = vault.vaultAddress.toLowerCase();
-  const scanAddr = getScanAddress(vault);
-  const scanAddrLc = scanAddr.toLowerCase();
-  const chainId = vault.chainId;
-  const minAmount = vault.minAmount || 0;
+async function tickChain(chainId, vaultsByAddr) {
+  const currentBlock = await getCurrentBlock(chainId);
+  if (!currentBlock) return;
 
-  const txs = await fetchAddressTransactions({ chainId, address: scanAddr });
+  const fromBlock = chainPointers.get(chainId) ?? currentBlock;
 
-  const rawPtr = pointers.get(vaultKey) || "";
-  const p = parsePointer(rawPtr || "");
+  // Rien de nouveau
+  if (fromBlock > currentBlock) return;
 
-  let seen = seenHashes.get(vaultKey);
-  if (!seen) {
-    seen = new Set();
-    seenHashes.set(vaultKey, seen);
-  }
+  // Ne traiter que MAX_BLOCKS_PER_TICK blocs par tick
+  const toBlock = Math.min(fromBlock + MAX_BLOCKS_PER_TICK - 1, currentBlock);
 
-  // token meta + optional amount sources (ERC20 transfers)
-  // underlyingToken = USDC/WBTC/etc (for deposits), sharesToken = vault shares (for withdraws)
-  const { tokenSet, underlyingToken, sharesToken, metaByAddr } = getTrackedTokenMeta(vault);
-  const underlyingMeta = underlyingToken ? metaByAddr[underlyingToken] : null;
-  const sharesMeta = sharesToken ? metaByAddr[sharesToken] : null;
+  const allEvents = [];
 
-  const transfersByHashVault = await fetchErc20TransfersAggregatedForAddress({
-    chainId,
-    address: scanAddr,
-    tokenSet
-  });
-
-  const out = [];
-
-  for (const tx of txs) {
-    const hash = (tx.id || tx.hash || "").toString();
-    const hashLc = hash.toLowerCase();
-    if (!hashLc) continue;
-
-    // anti-doublon
-    if (seen.has(hashLc)) continue;
-
-    // status false => fail
-    if (tx.status === false) {
-      seen.add(hashLc);
-      continue;
+  for (let blockNum = fromBlock; blockNum <= toBlock; blockNum++) {
+    let block;
+    try {
+      block = await getBlockByNumber(chainId, blockNum);
+    } catch (err) {
+      console.error(
+        `❌ eth_getBlockByNumber(${blockNum}) chain ${chainId}:`,
+        err
+      );
+      break;
     }
 
-    const blockNumber = Number(tx.blockNumber || 0);
-    const txIndex = Number(tx.index ?? tx.transactionIndex ?? 0);
-    const timeMs = toMs(tx.timestamp);
+    if (!block || !Array.isArray(block.transactions)) continue;
 
-    // ne pas renvoyer ce qui est antérieur aux premières secondes du bot
-    if (timeMs && timeMs < BOT_START_TS) {
-      seen.add(hashLc);
-      continue;
-    }
+    // Filtrer les txs dont le destinataire est un vault tracké
+    const relevantTxs = block.transactions.filter(
+      (tx) => tx?.to && vaultsByAddr.has((tx.to || "").toLowerCase())
+    );
 
-    // filtre par pointeur (block:txIndex) si on en a déjà un
-    if (p.have) {
-      if (blockNumber < p.block) {
-        seen.add(hashLc);
+    if (relevantTxs.length === 0) continue;
+
+    for (const tx of relevantTxs) {
+      const vaultAddrLc = (tx.to || "").toLowerCase();
+      const vault = vaultsByAddr.get(vaultAddrLc);
+      if (!vault) continue;
+
+      const topicMap = buildTopicMap(vault);
+      if (topicMap.size === 0) continue;
+
+      let receipt;
+      try {
+        receipt = await getTransactionReceipt(chainId, tx.hash);
+      } catch (err) {
+        console.error(`❌ receipt error (${tx.hash}):`, err);
         continue;
       }
-      if (blockNumber === p.block && txIndex <= p.index) {
-        seen.add(hashLc);
-        continue;
-      }
-    }
 
-    // NOUVELLE LOGIQUE : obtenir le type d'action depuis la config
-    const actionType = getActionType(tx, vault);
+      if (!receipt || !Array.isArray(receipt.logs)) continue;
 
-    // Si aucun type n'est trouvé, la méthode n'est pas trackée
-    if (!actionType) {
-      seen.add(hashLc);
-      continue;
-    }
+      // Ignorer les tx échouées
+      if (receipt.status === "0x0") continue;
 
-    const method = tx.method || tx.methodId || "unknown";
-
-    // from / to (outer tx)
-    const from = (tx.from || "").toLowerCase();
-    const to = (tx.to || "").toLowerCase();
-
-    // -------- Filtre whitelist par vault --------
-    const whitelist = Array.isArray(vault.whitelistedAddresses)
-      ? vault.whitelistedAddresses.map((addr) => addr.toLowerCase())
-      : [];
-
-    if (whitelist.length > 0) {
-      const isWhitelisted =
-        (from && whitelist.includes(from)) || (to && whitelist.includes(to));
-      if (isWhitelisted) {
-        console.log(`[${vault.name}] tx ignorée (adresse whitelistée)`, {
-          hash,
-          from,
-          to
+      for (const log of receipt.logs) {
+        const event = processLog({
+          vault,
+          topicMap,
+          tx,
+          log,
+          chainId,
+          blockTimestamp: block.timestamp
         });
-        seen.add(hashLc);
-        continue;
+        if (event) allEvents.push(event);
       }
     }
-
-    // Amount detection - prioritize input data decoding for reliability
-    const actionLower = (actionType || "").toLowerCase();
-    let picked = null;
-
-    const isDeposit = actionLower.includes("deposit");
-    const isWithdraw = actionLower.includes("withdraw") || actionLower.includes("redeem");
-
-    // Strategy 1 (PRIMARY): decode amount from transaction input data
-    // This is the most reliable source - the actual parameter passed to the function
-    const inputData = tx.input || tx.data;
-    if (inputData) {
-      const decodedAmount = decodeAmountFromInput(inputData);
-      if (decodedAmount !== null && decodedAmount > 0n) {
-        // For deposits: parameter is in underlying token (USDC, WBTC, etc.)
-        // For withdraws: parameter is in vault shares (gamiUSDC, etc.)
-        const tokenMeta = isWithdraw ? sharesMeta : underlyingMeta;
-        picked = {
-          raw: decodedAmount,
-          dec: tokenMeta?.tokenDecimals ?? 18,
-          sym: tokenMeta?.tokenSymbol ?? "TOKEN"
-        };
-      }
-    }
-
-    // Choose the appropriate token based on action type
-    const preferredToken = isWithdraw ? sharesToken : underlyingToken;
-    const preferredMeta = isWithdraw ? sharesMeta : underlyingMeta;
-
-    // Strategy 2: transfers involving the vault/controller address
-    const evVault = transfersByHashVault.get(hashLc);
-    if (!picked && evVault) {
-      if (isDeposit) {
-        // For deposits: tokens typically flow IN to the vault
-        picked = pickTokenFlow(evVault, underlyingToken, "in");
-        // Fallback: try "out" in case tracking is different (e.g., shares minted)
-        if (!picked) picked = pickTokenFlow(evVault, underlyingToken, "out");
-      } else if (isWithdraw) {
-        // For withdraws: tokens typically flow OUT of the vault
-        picked = pickTokenFlow(evVault, sharesToken, "out");
-        if (!picked) picked = pickTokenFlow(evVault, sharesToken, "in");
-      } else {
-        // Unknown action: try both directions with underlying token
-        picked = pickTokenFlow(evVault, underlyingToken, "in");
-        if (!picked) picked = pickTokenFlow(evVault, underlyingToken, "out");
-      }
-    }
-
-    // Strategy 3: transfers involving the transaction sender (without direction filter)
-    if (!picked && (isDeposit || isWithdraw)) {
-      // Fetch ALL transfers for the sender (no direction filter for broader coverage)
-      const transfersByHashUser = await fetchErc20TransfersAggregatedForAddress({
-        chainId,
-        address: from,
-        tokenSet
-        // No direction filter - this increases chances of finding the transfer
-      });
-      const evUser = transfersByHashUser.get(hashLc);
-      if (evUser) {
-        if (isDeposit) {
-          // User sends underlying tokens OUT for deposit
-          picked = pickTokenFlow(evUser, underlyingToken, "out");
-          if (!picked) picked = pickTokenFlow(evUser, underlyingToken, "in");
-        } else {
-          // User burns shares for withdraw
-          picked = pickTokenFlow(evUser, sharesToken, "in");
-          if (!picked) picked = pickTokenFlow(evUser, sharesToken, "out");
-        }
-      }
-    }
-
-    // Strategy 4: pick the largest token flow from any source as last resort
-    if (!picked && evVault) {
-      picked = pickTokenFlow(evVault, preferredToken, "in");
-      const outPicked = pickTokenFlow(evVault, preferredToken, "out");
-      if (outPicked && (!picked || outPicked.raw > picked.raw)) {
-        picked = outPicked;
-      }
-    }
-
-    const dec = picked?.dec ?? (preferredMeta?.tokenDecimals ?? 18);
-    const sym = picked?.sym ?? (preferredMeta?.tokenSymbol ?? "TOKEN");
-    const rawAmount = picked?.raw ?? null;
-
-    // minAmount filter: prefer token-level config if present, otherwise vault-level
-    const effectiveMinAmount =
-      (preferredMeta?.minAmount ?? 0) > 0 ? (preferredMeta?.minAmount ?? 0) : minAmount;
-
-    let amountStr = "N/A";
-    if (rawAmount !== null) {
-      const amountNum = Number(rawAmount) / Math.pow(10, dec);
-      if (effectiveMinAmount > 0 && amountNum < effectiveMinAmount) {
-        seen.add(hashLc);
-        continue;
-      }
-      amountStr = trimZeros(amountNum.toFixed(Math.min(dec, 8)));
-    } else {
-      // if minAmount > 0 and we can't compute an amount => skip (avoid spam)
-      if (effectiveMinAmount > 0) {
-        seen.add(hashLc);
-        continue;
-      }
-    }
-
-    const whenIso = new Date(timeMs || Date.now()).toISOString();
-
-    out.push({
-      block: blockNumber,
-      index: txIndex,
-      type: actionType, // Type explicite depuis la config
-      method,
-      symbol: sym,
-      amount: amountStr,
-      from,
-      to: to || scanAddrLc,
-      hash,
-      time: whenIso,
-      chainId
-    });
-
-    seen.add(hashLc);
   }
 
-  // envoi dans l'ordre chronologique (ancien -> récent)
-  out.sort((a, b) => {
-    if (a.block !== b.block) return a.block - b.block;
-    return a.index - b.index;
-  });
+  // Envoi dans l'ordre chronologique (plus ancien → plus récent)
+  allEvents.sort((a, b) =>
+    a.blockNumber !== b.blockNumber
+      ? a.blockNumber - b.blockNumber
+      : a.logIndex - b.logIndex
+  );
 
-  for (const it of out) {
+  for (const it of allEvents) {
     const emoji = getEmojiForAction(it.type);
     const txUrl = `https://routescan.io/tx/${it.hash}?chainid=${it.chainId}`;
     const msg =
-      `<b>${emoji} ${it.type}</b> on <b>${vault.name}</b>\n` +
-      `<i>Method:</i> <code>${it.method}</code>\n` +
+      `<b>${emoji} ${it.type}</b> on <b>${it.vaultName}</b>\n` +
       `Amount: <b>${it.amount} ${it.symbol}</b>\n` +
       (it.from ? `From: <code>${it.from}</code>\n` : "") +
-      (it.to ? `To: <code>${it.to}</code>\n` : "") +
       `Date: ${it.time}\n` +
       `Tx: ${txUrl}`;
-
     await sendTelegramMessage(chatId, msg);
   }
 
-  // Mise à jour du pointeur sur la base des tx address (déjà triées desc)
-  let newPointer = rawPtr || "";
-  if (txs.length) {
-    const top = txs[0];
-    const bn = Number(top.blockNumber || 0);
-    const ix = Number(top.index ?? top.transactionIndex ?? 0);
-    newPointer = `${bn}:${ix}`;
-  }
-  pointers.set(vaultKey, newPointer);
-
+  chainPointers.set(chainId, toBlock + 1);
   console.log(
-    "🔎 Debug vault:",
-    JSON.stringify(
-      {
-        vault: vault.name,
-        vaultAddress: vault.vaultAddress,
-        scanAddress: scanAddr,
-        chainId,
-        pointerIn: rawPtr,
-        pointerValid: p.have,
-        newPointer,
-        newItems: out.length
-      },
-      null,
-      2
-    )
+    `🔎 Chain ${chainId}: blocs ${fromBlock}→${toBlock} (${toBlock - fromBlock + 1} blocs), events=${allEvents.length}`
   );
 }
 
 // -------- Boucle principale --------
 
-async function tickAllVaults() {
+async function tickAllChains() {
+  if (tickRunning) {
+    console.log("⏭️ Tick précédent encore en cours, on passe.");
+    return;
+  }
+  tickRunning = true;
+  try {
+    await _tickAllChains();
+  } finally {
+    tickRunning = false;
+  }
+}
+
+async function _tickAllChains() {
+  // Grouper les vaults par chainId
+  const vaultsByChain = new Map(); // chainId → Map(addrLc → vault)
   for (const vault of VAULTS) {
+    if (!vault.chainId) continue;
+    if (
+      !vault.trackedEventsMap ||
+      Object.keys(vault.trackedEventsMap).length === 0
+    ) {
+      continue;
+    }
+    if (!vaultsByChain.has(vault.chainId)) {
+      vaultsByChain.set(vault.chainId, new Map());
+    }
+    vaultsByChain
+      .get(vault.chainId)
+      .set(vault.vaultAddress.toLowerCase(), vault);
+  }
+
+  for (const [chainId, vaultsByAddr] of vaultsByChain) {
     try {
-      if (!vault.chainId) {
-        console.warn(
-          `⚠️ vault.chainId missing for ${vault.name} — skipping (Routescan requires chainId).`
-        );
-        continue;
-      }
-
-      if (!vault.trackedMethodsMap || Object.keys(vault.trackedMethodsMap).length === 0) {
-        console.warn(
-          `⚠️ vault.trackedMethodsMap empty for ${vault.name} — skipping (no methods to track).`
-        );
-        continue;
-      }
-
-      await processVault(vault);
+      await tickChain(chainId, vaultsByAddr);
     } catch (err) {
-      console.error(`❌ Error processing vault ${vault.name}:`, err);
+      console.error(`❌ Erreur sur la chain ${chainId}:`, err);
     }
   }
 }
 
-export function startVaultsTracker() {
+// -------- Initialisation --------
+
+async function initializePointers() {
+  const chainIds = [...new Set(VAULTS.map((v) => v.chainId).filter(Boolean))];
+
+  for (const chainId of chainIds) {
+    try {
+      const block = await getCurrentBlock(chainId);
+      chainPointers.set(chainId, block);
+      console.log(`📦 Chain ${chainId} — bloc courant : ${block}`);
+    } catch (err) {
+      console.error(
+        `❌ Impossible de récupérer le bloc courant (chain ${chainId}):`,
+        err
+      );
+      chainPointers.set(chainId, 0);
+    }
+  }
+}
+
+export async function startVaultsTracker() {
   console.log(
-    `🚀 gami-vaults-tracker-bot started (Routescan: address transactions + ERC20 transfers). Check every ${CHECK_INTERVAL_SECONDS}s.`
+    `🚀 gami-vaults-tracker-bot (block polling) démarré. Check toutes les ${CHECK_INTERVAL_SECONDS}s, max ${MAX_BLOCKS_PER_TICK} blocs/tick.`
   );
 
-  // 1er passage: si des tx ont eu lieu après le démarrage, elles partent;
-  // celles d'avant sont filtrées par BOT_START_TS.
-  tickAllVaults();
-  setInterval(tickAllVaults, CHECK_EVERY_MS);
+  await initializePointers();
+
+  tickAllChains();
+  setInterval(tickAllChains, CHECK_EVERY_MS);
 }

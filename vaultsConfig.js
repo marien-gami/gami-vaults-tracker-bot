@@ -1,4 +1,51 @@
-// vaultsConfig.js - Version améliorée avec types d'actions explicites
+// vaultsConfig.js
+//
+// trackedEventsMap : topic0 (keccak256 de la signature d'event) → config
+//
+// Format de chaque entrée :
+//   "0x<64 hex>": {
+//     action          : string   – libellé affiché dans le message Telegram
+//     callerTopicIndex: number   – index dans topics[] pour l'adresse "from" (défaut: 1)
+//     amountDataSlot  : number   – slot dans les données ABI-encodées pour le montant (défaut: 0)
+//     amountTokenIndex: number   – index dans trackedTokens[] pour le symbole/decimals (défaut: 0)
+//   }
+//
+// Pour trouver un topic0 :
+//   Foundry  : cast sig-event "EventName(type1,type2,...)"
+//   En ligne : https://emn178.github.io/online-tools/keccak_256.html
+//   Etherscan: onglet "Events" du contrat
+
+// ── Topics ERC-4626 standard ──────────────────────────────────────────────────
+// Deposit(address indexed caller, address indexed owner, uint256 assets, uint256 shares)
+const TOPIC_ERC4626_DEPOSIT =
+  "0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7";
+
+// Withdraw(address indexed caller, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)
+const TOPIC_ERC4626_WITHDRAW =
+  "0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db";
+
+// ── Topics Gami async vaults — implémentation custom (uint40 epochId) ────────
+// DepositRequest(address indexed controller, address indexed owner, uint40 indexed epochId, address sender, uint256 assets)
+// data = [sender (address, slot 0), assets (uint256, slot 1)]
+const TOPIC_GAMI_DEPOSIT_REQUEST =
+  "0xb8d4ce171fd9025cee49807119bdabcf1f44e7ef94ba2264e1771bb13559d83c";
+
+// RedeemRequest(address indexed controller, address indexed owner, uint40 indexed epochId, address sender, uint256 shares)
+// data = [sender (address, slot 0), shares (uint256, slot 1)]
+const TOPIC_GAMI_REDEEM_REQUEST =
+  "0x4629445fb0a7bc033f1c5edb3a336c46480bc798d388fa78f7257bb40e8f93b9";
+
+// ── Topics ERC-7540 standard (uint256 requestId) ─────────────────────────────
+// DepositRequest(address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 assets)
+// data = [sender (address, slot 0), assets (uint256, slot 1)]
+const TOPIC_ERC7540_DEPOSIT_REQUEST =
+  "0xbb58420bb8ce44e11b84e214cc0de10ce5e7c24d0355b2815c3d758b514cae72";
+
+// RedeemRequest(address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 shares)
+// data = [sender (address, slot 0), shares (uint256, slot 1)]
+const TOPIC_ERC7540_REDEEM_REQUEST =
+  "0x1fdc681a13d8c5da54e301c7ce6542dcde4581e4725043fdab2db12ddc574506";
+
 export const VAULTS = [
   {
     name: "Alpine BTC Flagship",
@@ -18,11 +65,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x6e553f65": "Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0xf3cbf47c": "Withdraw",
-      "0x77a84317": "Withdraw"
+    trackedEventsMap: {
+      [TOPIC_ERC4626_DEPOSIT]: {
+        action: "Deposit",
+        callerTopicIndex: 1, // topics[1] = caller
+        amountDataSlot: 0,   // data[0] = assets (WBTC)
+        amountTokenIndex: 0  // trackedTokens[0] = WBTC
+      },
+      [TOPIC_ERC4626_WITHDRAW]: {
+        action: "Withdraw",
+        callerTopicIndex: 1, // topics[1] = caller
+        amountDataSlot: 0,   // data[0] = assets (WBTC)
+        amountTokenIndex: 0  // trackedTokens[0] = WBTC
+      },
     }
   },
   {
@@ -43,11 +98,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x6e553f65": "Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0xf3cbf47c": "Withdraw",
-      "0x77a84317": "Withdraw"
+    trackedEventsMap: {
+      [TOPIC_ERC4626_DEPOSIT]: {
+        action: "Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 0,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC4626_WITHDRAW]: {
+        action: "Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 0,
+        amountTokenIndex: 0  // USDC
+      },
     }
   },
   {
@@ -68,11 +131,20 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0xa5948c89": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw",
+    trackedEventsMap: {
+      // DepositRequest couvre les deux variants requestDeposit (avec ou sans referral)
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
     }
   },
   {
@@ -93,9 +165,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // WBTC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiWBTC
+      },
     }
   },
   {
@@ -116,10 +198,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSDC
+      },
     }
   },
   {
@@ -134,16 +225,25 @@ export const VAULTS = [
         minAmount: 0
       },
       {
-        tokenAddress: "0x59b7942F7D2AFD085691ce65c152e0D38D4Eff22", // GamilvlUSDC
+        tokenAddress: "0x59b7942F7D2AFD085691ce65c152e0D38D4Eff22", // GamilvlUSD
         tokenSymbol: "gamilvlUSD",
         tokenDecimals: 18,
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamilvlUSD
+      },
     }
   },
   {
@@ -164,10 +264,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // hemiBTC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamihemiBTC
+      },
     }
   },
   {
@@ -188,10 +297,86 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // WETH
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiETH
+      },
+    }
+  },
+  {
+    name: "Gami Spectra Metavault",
+    vaultAddress: "0x776F95321a0285F8BCde149E3264D16DC08da69a",
+    chainId: 8453,
+    trackedTokens: [
+      {
+        tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC natif Base
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x776F95321a0285F8BCde149E3264D16DC08da69a", // gamiSpectraUSDC
+        tokenSymbol: "gamiSpectraUSDC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      // Ce vault utilise les topics ERC-7540 standard (uint256 requestId)
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiSpectraUSDC
+      },
+    }
+  },
+  {
+    name: "Gami Conservative USPC",
+    vaultAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916", // gamiUSPC
+        tokenSymbol: "gamiUSPC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSPC
+      },
     }
   },
   {
@@ -212,10 +397,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiMSAUSDCdef
+      },
     }
   },
   {
@@ -236,10 +430,19 @@ export const VAULTS = [
         minAmount: 0
       },
     ],
-    trackedMethodsMap: {
-      "0x85b77f45": "Request Deposit",
-      "0x7d41c86e": "Request Withdraw",
-      "0x5cfe2fe4": "Request Withdraw"
+    trackedEventsMap: {
+      [TOPIC_GAMI_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_GAMI_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiMSAUSDCdyn
+      },
     }
   },
 ];
