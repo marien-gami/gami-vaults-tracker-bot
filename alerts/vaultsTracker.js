@@ -35,6 +35,12 @@ const ROUTESCAN_DELAY_MS = parseInt(
 
 const RPC_MAX_RETRIES = parseInt(process.env.RPC_MAX_RETRIES || "3", 10);
 
+// Fallback RPC par chainId (ex: Alchemy pour Base)
+const FALLBACK_RPC_URLS = new Map();
+if (process.env.ALCHEMY_BASE_RPC_URL) {
+  FALLBACK_RPC_URLS.set(8453, process.env.ALCHEMY_BASE_RPC_URL);
+}
+
 // Nombre maximum de blocs traités par tick (par chain)
 const MAX_BLOCKS_PER_TICK = parseInt(
   process.env.MAX_BLOCKS_PER_TICK || "50",
@@ -94,6 +100,25 @@ function decodeUint256FromData(data, slotIndex = 0) {
   }
 }
 
+// -------- Fallback JSON-RPC (Alchemy) --------
+
+async function callFallbackRpc(chainId, method, params) {
+  const url = FALLBACK_RPC_URLS.get(chainId);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.result ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // -------- Routescan RPC (proxy module) --------
 
 async function rpcFetch(chainId, params) {
@@ -134,18 +159,29 @@ async function rpcFetch(chainId, params) {
 
 async function getCurrentBlock(chainId) {
   const result = await rpcFetch(chainId, { action: "eth_blockNumber" });
-  if (!result) return 0;
-  return parseInt(result, 16);
+  if (result) return parseInt(result, 16);
+  const fallback = await callFallbackRpc(chainId, "eth_blockNumber", []);
+  if (fallback) {
+    console.log(`↩️  Fallback RPC utilisé pour eth_blockNumber (chain ${chainId})`);
+    return parseInt(fallback, 16);
+  }
+  return 0;
 }
 
 // Retourne le bloc avec ses transactions complètes (boolean=true → full tx objects)
 async function getBlockByNumber(chainId, blockNumber) {
   const tag = "0x" + blockNumber.toString(16);
-  return rpcFetch(chainId, {
+  const result = await rpcFetch(chainId, {
     action: "eth_getBlockByNumber",
     tag,
     boolean: "true"
   });
+  if (result) return result;
+  const fallback = await callFallbackRpc(chainId, "eth_getBlockByNumber", [tag, true]);
+  if (fallback) {
+    console.log(`↩️  Fallback RPC utilisé pour eth_getBlockByNumber(${blockNumber}) chain ${chainId}`);
+  }
+  return fallback;
 }
 
 // Retourne le receipt d'une transaction (logs inclus)
