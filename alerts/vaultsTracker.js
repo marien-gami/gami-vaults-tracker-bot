@@ -29,9 +29,11 @@ const CHECK_INTERVAL_SECONDS = parseInt(
 const CHECK_EVERY_MS = CHECK_INTERVAL_SECONDS * 1000;
 
 const ROUTESCAN_DELAY_MS = parseInt(
-  process.env.ROUTESCAN_DELAY_MS || "300",
+  process.env.ROUTESCAN_DELAY_MS || "150",
   10
 );
+
+const RPC_MAX_RETRIES = parseInt(process.env.RPC_MAX_RETRIES || "3", 10);
 
 // Nombre maximum de blocs traités par tick (par chain)
 const MAX_BLOCKS_PER_TICK = parseInt(
@@ -98,7 +100,7 @@ async function rpcFetch(chainId, params) {
   if (!ROUTESCAN_API_KEY) {
     throw new Error("ROUTESCAN_API_KEY missing in .env");
   }
-  await sleep(ROUTESCAN_DELAY_MS);
+
   const u = new URL(
     `${ROUTESCAN_API_URL}/v2/network/${ROUTESCAN_NETWORK_ID}/evm/${chainId}/etherscan/api`
   );
@@ -106,15 +108,28 @@ async function rpcFetch(chainId, params) {
   for (const [k, v] of Object.entries(params)) {
     u.searchParams.set(k, String(v));
   }
-  const res = await fetch(u.toString(), {
-    headers: { apikey: ROUTESCAN_API_KEY }
-  });
-  if (!res.ok) {
+
+  for (let attempt = 0; attempt <= RPC_MAX_RETRIES; attempt++) {
+    await sleep(ROUTESCAN_DELAY_MS);
+    const res = await fetch(u.toString(), {
+      headers: { apikey: ROUTESCAN_API_KEY }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json?.result ?? null;
+    }
+    if (res.status === 500 && attempt < RPC_MAX_RETRIES) {
+      const backoff = 600 * Math.pow(2, attempt);
+      console.warn(
+        `⚠️  Routescan 500 (chain ${chainId}, action=${params.action}), retry ${attempt + 1}/${RPC_MAX_RETRIES} dans ${backoff}ms…`
+      );
+      await sleep(backoff);
+      continue;
+    }
     console.error("❌ Routescan HTTP error:", res.status, await res.text());
     return null;
   }
-  const json = await res.json();
-  return json?.result ?? null;
+  return null;
 }
 
 async function getCurrentBlock(chainId) {
@@ -238,6 +253,7 @@ async function tickChain(chainId, vaultsByAddr) {
   const toBlock = Math.min(fromBlock + MAX_BLOCKS_PER_TICK - 1, currentBlock);
 
   const allEvents = [];
+  let lastProcessedBlock = fromBlock - 1;
 
   for (let blockNum = fromBlock; blockNum <= toBlock; blockNum++) {
     let block;
@@ -251,14 +267,21 @@ async function tickChain(chainId, vaultsByAddr) {
       break;
     }
 
-    if (!block || !Array.isArray(block.transactions)) continue;
+    if (!block || !Array.isArray(block.transactions)) {
+      if (!block) break; // échec définitif après retries → on s'arrête ici
+      lastProcessedBlock = blockNum;
+      continue;
+    }
 
     // Filtrer les txs dont le destinataire est un vault tracké
     const relevantTxs = block.transactions.filter(
       (tx) => tx?.to && vaultsByAddr.has((tx.to || "").toLowerCase())
     );
 
-    if (relevantTxs.length === 0) continue;
+    if (relevantTxs.length === 0) {
+      lastProcessedBlock = blockNum;
+      continue;
+    }
 
     for (const tx of relevantTxs) {
       const vaultAddrLc = (tx.to || "").toLowerCase();
@@ -293,6 +316,7 @@ async function tickChain(chainId, vaultsByAddr) {
         if (event) allEvents.push(event);
       }
     }
+    lastProcessedBlock = blockNum;
   }
 
   // Envoi dans l'ordre chronologique (plus ancien → plus récent)
@@ -314,9 +338,10 @@ async function tickChain(chainId, vaultsByAddr) {
     await sendTelegramMessage(chatId, msg);
   }
 
-  chainPointers.set(chainId, toBlock + 1);
+  const nextPointer = lastProcessedBlock + 1;
+  chainPointers.set(chainId, nextPointer);
   console.log(
-    `🔎 Chain ${chainId}: blocs ${fromBlock}→${toBlock} (${toBlock - fromBlock + 1} blocs), events=${allEvents.length}`
+    `🔎 Chain ${chainId}: blocs ${fromBlock}→${lastProcessedBlock} (${lastProcessedBlock - fromBlock + 1} blocs), events=${allEvents.length}`
   );
 }
 
@@ -354,13 +379,13 @@ async function _tickAllChains() {
       .set(vault.vaultAddress.toLowerCase(), vault);
   }
 
-  for (const [chainId, vaultsByAddr] of vaultsByChain) {
-    try {
-      await tickChain(chainId, vaultsByAddr);
-    } catch (err) {
-      console.error(`❌ Erreur sur la chain ${chainId}:`, err);
-    }
-  }
+  await Promise.all(
+    [...vaultsByChain.entries()].map(([chainId, vaultsByAddr]) =>
+      tickChain(chainId, vaultsByAddr).catch((err) =>
+        console.error(`❌ Erreur sur la chain ${chainId}:`, err)
+      )
+    )
+  );
 }
 
 // -------- Initialisation --------
