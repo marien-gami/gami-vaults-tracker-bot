@@ -451,10 +451,15 @@ async function _tickAllChains() {
       .set(vault.vaultAddress.toLowerCase(), vault);
   }
 
+  const chains = [...vaultsByChain.entries()];
+  const staggerMs = Math.floor(CHECK_EVERY_MS / chains.length);
+
   await Promise.all(
-    [...vaultsByChain.entries()].map(([chainId, vaultsByAddr]) =>
-      tickChain(chainId, vaultsByAddr).catch((err) =>
-        console.error(`❌ Erreur sur la chain ${chainId}:`, err)
+    chains.map(([chainId, vaultsByAddr], index) =>
+      sleep(index * staggerMs).then(() =>
+        tickChain(chainId, vaultsByAddr).catch((err) =>
+          console.error(`❌ Erreur sur la chain ${chainId}:`, err)
+        )
       )
     )
   );
