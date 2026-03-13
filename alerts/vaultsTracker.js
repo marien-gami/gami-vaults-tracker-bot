@@ -149,8 +149,6 @@ async function rpcFetch(chainId, params) {
   // Vérifier si la chain est en cooldown 429
   const cooldown = chainCooldowns.get(chainId);
   if (cooldown && Date.now() < cooldown.until) {
-    const remainingSec = Math.ceil((cooldown.until - Date.now()) / 1000);
-    console.log(`⏳ Chain ${chainId} en cooldown 429 — encore ${remainingSec}s`);
     return null;
   }
 
@@ -316,8 +314,9 @@ async function tickChain(chainId, vaultsByAddr) {
     return;
   }
   if (cooldown && Date.now() >= cooldown.until) {
-    console.log(`✅ Chain ${chainId} — cooldown terminé, reprise`);
-    chainCooldowns.delete(chainId);
+    console.log(`✅ Chain ${chainId} — cooldown terminé (niveau ${cooldown.level + 1}), reprise`);
+    // Ne pas supprimer — on garde le niveau pour que le prochain 429 escalade correctement
+    // La suppression se fait uniquement sur succès dans rpcFetch
   }
 
   const currentBlock = await getCurrentBlock(chainId);
