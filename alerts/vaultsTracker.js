@@ -29,7 +29,7 @@ const CHECK_INTERVAL_SECONDS = parseInt(
 const CHECK_EVERY_MS = CHECK_INTERVAL_SECONDS * 1000;
 
 const ROUTESCAN_DELAY_MS = parseInt(
-  process.env.ROUTESCAN_DELAY_MS || "150",
+  process.env.ROUTESCAN_DELAY_MS || "800",
   10
 );
 
@@ -142,6 +142,14 @@ async function rpcFetch(chainId, params) {
     if (res.ok) {
       const json = await res.json();
       return json?.result ?? null;
+    }
+    if (res.status === 429 && attempt < RPC_MAX_RETRIES) {
+      const backoff = 5000 * Math.pow(2, attempt); // 5s, 10s, 20s
+      console.warn(
+        `⚠️  Routescan 429 rate-limit (chain ${chainId}, action=${params.action}), retry ${attempt + 1}/${RPC_MAX_RETRIES} dans ${backoff}ms…`
+      );
+      await sleep(backoff);
+      continue;
     }
     if (res.status === 500 && attempt < RPC_MAX_RETRIES) {
       const backoff = 600 * Math.pow(2, attempt);
