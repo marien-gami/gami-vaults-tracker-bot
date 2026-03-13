@@ -42,11 +42,11 @@ const ROUTESCAN_DELAY_MS = parseInt(
 
 const RPC_MAX_RETRIES = parseInt(process.env.RPC_MAX_RETRIES || "3", 10);
 
-// Fallback RPC par chainId (ex: Alchemy pour Base)
+// Fallback RPC par chainId
 const FALLBACK_RPC_URLS = new Map();
-if (process.env.ALCHEMY_BASE_RPC_URL) {
-  FALLBACK_RPC_URLS.set(8453, process.env.ALCHEMY_BASE_RPC_URL);
-}
+if (process.env.ALCHEMY_BASE_RPC_URL)  FALLBACK_RPC_URLS.set(8453,  process.env.ALCHEMY_BASE_RPC_URL);
+if (process.env.ALCHEMY_ETH_RPC_URL)   FALLBACK_RPC_URLS.set(1,     process.env.ALCHEMY_ETH_RPC_URL);
+if (process.env.ALCHEMY_AVAX_RPC_URL)  FALLBACK_RPC_URLS.set(43114, process.env.ALCHEMY_AVAX_RPC_URL);
 
 // Nombre maximum de blocs traités par tick (par chain)
 const MAX_BLOCKS_PER_TICK = parseInt(
@@ -188,38 +188,32 @@ async function rpcFetch(chainId, params) {
 }
 
 async function getCurrentBlock(chainId) {
+  // Alchemy en primaire si disponible
+  const alchemy = await callFallbackRpc(chainId, "eth_blockNumber", []);
+  if (alchemy) return parseInt(alchemy, 16);
+  // Routescan en backup
   const result = await rpcFetch(chainId, { action: "eth_blockNumber" });
   if (result) return parseInt(result, 16);
-  const fallback = await callFallbackRpc(chainId, "eth_blockNumber", []);
-  if (fallback) {
-    console.log(`↩️  Fallback RPC utilisé pour eth_blockNumber (chain ${chainId})`);
-    return parseInt(fallback, 16);
-  }
   return 0;
 }
 
 // Retourne le bloc avec ses transactions complètes (boolean=true → full tx objects)
 async function getBlockByNumber(chainId, blockNumber) {
   const tag = "0x" + blockNumber.toString(16);
-  const result = await rpcFetch(chainId, {
-    action: "eth_getBlockByNumber",
-    tag,
-    boolean: "true"
-  });
-  if (result) return result;
-  const fallback = await callFallbackRpc(chainId, "eth_getBlockByNumber", [tag, true]);
-  if (fallback) {
-    console.log(`↩️  Fallback RPC utilisé pour eth_getBlockByNumber(${blockNumber}) chain ${chainId}`);
-  }
-  return fallback;
+  // Alchemy en primaire si disponible
+  const alchemy = await callFallbackRpc(chainId, "eth_getBlockByNumber", [tag, true]);
+  if (alchemy) return alchemy;
+  // Routescan en backup
+  return rpcFetch(chainId, { action: "eth_getBlockByNumber", tag, boolean: "true" });
 }
 
 // Retourne le receipt d'une transaction (logs inclus)
 async function getTransactionReceipt(chainId, txHash) {
-  return rpcFetch(chainId, {
-    action: "eth_getTransactionReceipt",
-    txhash: txHash
-  });
+  // Alchemy en primaire si disponible
+  const alchemy = await callFallbackRpc(chainId, "eth_getTransactionReceipt", [txHash]);
+  if (alchemy) return alchemy;
+  // Routescan en backup
+  return rpcFetch(chainId, { action: "eth_getTransactionReceipt", txhash: txHash });
 }
 
 // -------- Traitement d'un log --------
