@@ -36,6 +36,9 @@ const TOPIC_ERC7540_REDEEM_REQUEST =
   "0x1fdc681a13d8c5da54e301c7ce6542dcde4581e4725043fdab2db12ddc574506";
 
 export const VAULTS = [
+
+// Upshift Vaults
+  
   {
     name: "Alpine BTC Flagship",
     vaultAddress: "0x6625ba54dc861e9f5c678983dba5ba96d19a9224",
@@ -102,6 +105,9 @@ export const VAULTS = [
       },
     }
   },
+  
+// Gami Lagoon Vaults
+  
   {
     name: "Gami Stake DAO USDC",
     vaultAddress: "0x33e1339567c183fbadcb43f72d11c47229d468ab",
@@ -301,6 +307,75 @@ export const VAULTS = [
     }
   },
   {
+    name: "Gami Conservative USPC",
+    vaultAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916", // gamiUSPC
+        tokenSymbol: "gamiUSPC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSPC
+      },
+    }
+  },
+  {
+    name: "Gami Avalanche USDC",
+    vaultAddress: "0xb3a2bcb30c1460d88db18b42a29fae2399952874",
+    chainId: 43114,
+    trackedTokens: [
+      {
+        tokenAddress: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xB3A2BCB30c1460d88db18B42a29fae2399952874", // gamiaUSDC
+        tokenSymbol: "gamiaUSDC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSPC
+      },
+    }
+  },
+  
+// Gami Spectra MetaVaults
+  
+  {
     name: "Gami Spectra USDC Metavault",
     vaultAddress: "0x776F95321a0285F8BCde149E3264D16DC08da69a",
     chainId: 8453,
@@ -374,39 +449,9 @@ export const VAULTS = [
       },
     }
   },
-  {
-    name: "Gami Conservative USPC",
-    vaultAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916",
-    chainId: 1,
-    trackedTokens: [
-      {
-        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
-        tokenSymbol: "USDC",
-        tokenDecimals: 6,
-        minAmount: 0
-      },
-      {
-        tokenAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916", // gamiUSPC
-        tokenSymbol: "gamiUSPC",
-        tokenDecimals: 18,
-        minAmount: 0
-      },
-    ],
-    trackedEventsMap: {
-      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
-        action: "Request Deposit",
-        callerTopicIndex: 1,
-        amountDataSlot: 1,
-        amountTokenIndex: 0  // USDC
-      },
-      [TOPIC_ERC7540_REDEEM_REQUEST]: {
-        action: "Request Withdraw",
-        callerTopicIndex: 1,
-        amountDataSlot: 1,
-        amountTokenIndex: 1  // gamiUSPC
-      },
-    }
-  },
+  
+// MSA Lagoon Vaults
+
   {
     name: "Gami MSA Def",
     vaultAddress: "0xb725f2277f3f62ad017a6dc418433b326a9f6334",
