@@ -19,8 +19,15 @@ const chatId = process.env.CHAT_ID;
 
 const ROUTESCAN_API_URL =
   process.env.ROUTESCAN_API_URL || "https://api.routescan.io";
-const ROUTESCAN_API_KEY = process.env.ROUTESCAN_API_KEY;
+const ROUTESCAN_API_KEY_DEFAULT = process.env.ROUTESCAN_API_KEY;
 const ROUTESCAN_NETWORK_ID = process.env.ROUTESCAN_NETWORK_ID || "mainnet";
+
+// Clés API Routescan par chain (optionnel — utilise la clé par défaut si absent)
+function getRoutescanApiKey(chainId) {
+  return (
+    process.env[`ROUTESCAN_API_KEY_${chainId}`] || ROUTESCAN_API_KEY_DEFAULT
+  );
+}
 
 const CHECK_INTERVAL_SECONDS = parseInt(
   process.env.CHECK_INTERVAL_SECONDS || "30",
@@ -126,8 +133,9 @@ async function callFallbackRpc(chainId, method, params) {
 // -------- Routescan RPC (proxy module) --------
 
 async function rpcFetch(chainId, params) {
-  if (!ROUTESCAN_API_KEY) {
-    throw new Error("ROUTESCAN_API_KEY missing in .env");
+  const apiKey = getRoutescanApiKey(chainId);
+  if (!apiKey) {
+    throw new Error(`ROUTESCAN_API_KEY missing in .env (chain ${chainId})`);
   }
 
   const u = new URL(
@@ -149,7 +157,7 @@ async function rpcFetch(chainId, params) {
   for (let attempt = 0; attempt <= RPC_MAX_RETRIES; attempt++) {
     await sleep(ROUTESCAN_DELAY_MS);
     const res = await fetch(u.toString(), {
-      headers: { apikey: ROUTESCAN_API_KEY }
+      headers: { apikey: apiKey }
     });
     if (res.ok) {
       const json = await res.json();
