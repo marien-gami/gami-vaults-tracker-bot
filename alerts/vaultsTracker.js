@@ -43,7 +43,7 @@ if (process.env.ALCHEMY_BASE_RPC_URL) {
 
 // Nombre maximum de blocs traités par tick (par chain)
 const MAX_BLOCKS_PER_TICK = parseInt(
-  process.env.MAX_BLOCKS_PER_TICK || "50",
+  process.env.MAX_BLOCKS_PER_TICK || "15",
   10
 );
 
@@ -55,6 +55,10 @@ const seenKeys = new Set();
 
 // verrou pour éviter les ticks overlappants
 let tickRunning = false;
+
+// cooldown par chain après 429 : chainId → { until: timestamp, level: 0|1|2 }
+const chainCooldowns = new Map();
+const COOLDOWN_DURATIONS = [60_000, 300_000, 600_000]; // 1min, 5min, 10min
 
 // -------- Helpers --------
 
@@ -134,6 +138,14 @@ async function rpcFetch(chainId, params) {
     u.searchParams.set(k, String(v));
   }
 
+  // Vérifier si la chain est en cooldown 429
+  const cooldown = chainCooldowns.get(chainId);
+  if (cooldown && Date.now() < cooldown.until) {
+    const remainingSec = Math.ceil((cooldown.until - Date.now()) / 1000);
+    console.log(`⏳ Chain ${chainId} en cooldown 429 — encore ${remainingSec}s`);
+    return null;
+  }
+
   for (let attempt = 0; attempt <= RPC_MAX_RETRIES; attempt++) {
     await sleep(ROUTESCAN_DELAY_MS);
     const res = await fetch(u.toString(), {
@@ -141,15 +153,19 @@ async function rpcFetch(chainId, params) {
     });
     if (res.ok) {
       const json = await res.json();
+      // Réinitialiser le cooldown si succès
+      if (chainCooldowns.has(chainId)) chainCooldowns.delete(chainId);
       return json?.result ?? null;
     }
-    if (res.status === 429 && attempt < RPC_MAX_RETRIES) {
-      const backoff = 5000 * Math.pow(2, attempt); // 5s, 10s, 20s
+    if (res.status === 429) {
+      const prev = chainCooldowns.get(chainId);
+      const level = Math.min((prev?.level ?? -1) + 1, COOLDOWN_DURATIONS.length - 1);
+      const duration = COOLDOWN_DURATIONS[level];
+      chainCooldowns.set(chainId, { until: Date.now() + duration, level });
       console.warn(
-        `⚠️  Routescan 429 rate-limit (chain ${chainId}, action=${params.action}), retry ${attempt + 1}/${RPC_MAX_RETRIES} dans ${backoff}ms…`
+        `⚠️  Routescan 429 rate-limit (chain ${chainId}, action=${params.action}) — cooldown ${duration / 1000}s (niveau ${level + 1}/${COOLDOWN_DURATIONS.length})`
       );
-      await sleep(backoff);
-      continue;
+      return null; // pas de sleep, on rend la main immédiatement
     }
     if (res.status === 500 && attempt < RPC_MAX_RETRIES) {
       const backoff = 600 * Math.pow(2, attempt);
@@ -285,6 +301,17 @@ function processLog({ vault, topicMap, tx, log, chainId, blockTimestamp }) {
 // -------- Tick par chain --------
 
 async function tickChain(chainId, vaultsByAddr) {
+  const cooldown = chainCooldowns.get(chainId);
+  if (cooldown && Date.now() < cooldown.until) {
+    const remainingSec = Math.ceil((cooldown.until - Date.now()) / 1000);
+    console.log(`⏳ Chain ${chainId} en cooldown 429 — encore ${remainingSec}s, skip tick`);
+    return;
+  }
+  if (cooldown && Date.now() >= cooldown.until) {
+    console.log(`✅ Chain ${chainId} — cooldown terminé, reprise`);
+    chainCooldowns.delete(chainId);
+  }
+
   const currentBlock = await getCurrentBlock(chainId);
   if (!currentBlock) return;
 
