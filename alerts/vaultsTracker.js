@@ -317,79 +317,76 @@ async function tickChain(chainId, vaultsByAddr) {
   if (!currentBlock) return;
 
   const fromBlock = chainPointers.get(chainId) ?? currentBlock;
-
-  // Rien de nouveau
   if (fromBlock > currentBlock) return;
 
-  // Ne traiter que MAX_BLOCKS_PER_TICK blocs par tick
-  const toBlock = Math.min(fromBlock + MAX_BLOCKS_PER_TICK - 1, currentBlock);
+  // Alchemy limite eth_getLogs à 2000 blocs par appel — cap de sécurité
+  const toBlock = Math.min(currentBlock, fromBlock + 1999);
+
+  // Construire les filtres : adresses des vaults + topic0s trackés
+  const addresses = [...vaultsByAddr.keys()];
+  const allTopics = new Set();
+  for (const vault of vaultsByAddr.values()) {
+    for (const topic of Object.keys(vault.trackedEventsMap || {})) {
+      allTopics.add(topic.toLowerCase());
+    }
+  }
+
+  // Un seul appel eth_getLogs couvre toute la plage — pas de retard, ~75 CU vs 480 CU
+  let logs;
+  try {
+    logs = await callFallbackRpc(chainId, "eth_getLogs", [{
+      fromBlock: "0x" + fromBlock.toString(16),
+      toBlock:   "0x" + toBlock.toString(16),
+      address:   addresses,
+      topics:    [[...allTopics]]
+    }]);
+  } catch (err) {
+    console.error(`❌ eth_getLogs chain ${chainId}:`, err);
+    chainPointers.set(chainId, toBlock + 1);
+    return;
+  }
 
   const allEvents = [];
-  let lastProcessedBlock = fromBlock - 1;
 
-  for (let blockNum = fromBlock; blockNum <= toBlock; blockNum++) {
-    let block;
-    try {
-      block = await getBlockByNumber(chainId, blockNum);
-    } catch (err) {
-      console.error(
-        `❌ eth_getBlockByNumber(${blockNum}) chain ${chainId}:`,
-        err
-      );
-      break;
-    }
+  if (Array.isArray(logs) && logs.length > 0) {
+    // Cache des timestamps de blocs pour éviter les appels dupliqués
+    const blockTimestampCache = new Map();
 
-    if (!block || !Array.isArray(block.transactions)) {
-      if (!block) break; // échec définitif après retries → on s'arrête ici
-      lastProcessedBlock = blockNum;
-      continue;
-    }
+    for (const log of logs) {
+      if (log.removed) continue;
 
-    // Filtrer les txs dont le destinataire est un vault tracké
-    const relevantTxs = block.transactions.filter(
-      (tx) => tx?.to && vaultsByAddr.has((tx.to || "").toLowerCase())
-    );
-
-    if (relevantTxs.length === 0) {
-      lastProcessedBlock = blockNum;
-      continue;
-    }
-
-    for (const tx of relevantTxs) {
-      const vaultAddrLc = (tx.to || "").toLowerCase();
-      const vault = vaultsByAddr.get(vaultAddrLc);
+      const vaultAddr = (log.address || "").toLowerCase();
+      const vault = vaultsByAddr.get(vaultAddr);
       if (!vault) continue;
 
       const topicMap = buildTopicMap(vault);
-      if (topicMap.size === 0) continue;
 
-      let receipt;
-      try {
-        receipt = await getTransactionReceipt(chainId, tx.hash);
-      } catch (err) {
-        console.error(`❌ receipt error (${tx.hash}):`, err);
-        continue;
+      // Timestamp du bloc (avec cache)
+      const blockNum = parseInt(log.blockNumber, 16);
+      if (!blockTimestampCache.has(blockNum)) {
+        const block = await callFallbackRpc(chainId, "eth_getBlockByNumber", [
+          "0x" + blockNum.toString(16), false
+        ]);
+        blockTimestampCache.set(blockNum, block?.timestamp ?? null);
       }
 
-      if (!receipt || !Array.isArray(receipt.logs)) continue;
+      // Tx pour récupérer tx.from si non présent dans les topics
+      const tx = (await callFallbackRpc(chainId, "eth_getTransactionByHash", [log.transactionHash]))
+        ?? { hash: log.transactionHash, from: null, blockNumber: log.blockNumber };
 
-      // Ignorer les tx échouées
-      if (receipt.status === "0x0") continue;
-
-      for (const log of receipt.logs) {
-        const event = processLog({
-          vault,
-          topicMap,
-          tx,
-          log,
-          chainId,
-          blockTimestamp: block.timestamp
-        });
-        if (event) allEvents.push(event);
-      }
+      const event = processLog({
+        vault,
+        topicMap,
+        tx,
+        log,
+        chainId,
+        blockTimestamp: blockTimestampCache.get(blockNum)
+      });
+      if (event) allEvents.push(event);
     }
-    lastProcessedBlock = blockNum;
   }
+
+  const lastProcessedBlock = toBlock;
 
   // Envoi dans l'ordre chronologique (plus ancien → plus récent)
   allEvents.sort((a, b) =>
