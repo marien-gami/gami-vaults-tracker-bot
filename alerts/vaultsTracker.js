@@ -42,11 +42,17 @@ const ROUTESCAN_DELAY_MS = parseInt(
 
 const RPC_MAX_RETRIES = parseInt(process.env.RPC_MAX_RETRIES || "3", 10);
 
-// Fallback RPC par chainId
+// RPC primaire par chainId — Alchemy en premier, puis vars génériques RPC_URL_<chainId>
 const FALLBACK_RPC_URLS = new Map();
 if (process.env.ALCHEMY_BASE_RPC_URL)  FALLBACK_RPC_URLS.set(8453,  process.env.ALCHEMY_BASE_RPC_URL);
 if (process.env.ALCHEMY_ETH_RPC_URL)   FALLBACK_RPC_URLS.set(1,     process.env.ALCHEMY_ETH_RPC_URL);
 if (process.env.ALCHEMY_AVAX_RPC_URL)  FALLBACK_RPC_URLS.set(43114, process.env.ALCHEMY_AVAX_RPC_URL);
+// RPC_URL_<chainId> — pour tout provider JSON-RPC (ex: RPC_URL_14 pour Flare)
+// Prend la priorité sur les vars Alchemy si les deux sont définies
+for (const [key, value] of Object.entries(process.env)) {
+  const match = key.match(/^RPC_URL_(\d+)$/);
+  if (match && value) FALLBACK_RPC_URLS.set(parseInt(match[1], 10), value);
+}
 
 // Nombre maximum de blocs traités par tick (par chain)
 const MAX_BLOCKS_PER_TICK = parseInt(
