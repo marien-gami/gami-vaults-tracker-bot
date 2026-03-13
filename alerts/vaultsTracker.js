@@ -60,6 +60,9 @@ const MAX_BLOCKS_PER_TICK = parseInt(
   10
 );
 
+// Taille max d'une plage eth_getLogs — free tier Alchemy = 10 blocs
+const LOGS_BLOCK_RANGE = parseInt(process.env.LOGS_BLOCK_RANGE || "10", 10);
+
 // pointeurs par chain : chainId → nextBlock (number)
 const chainPointers = new Map();
 
@@ -337,19 +340,23 @@ async function tickChain(chainId, vaultsByAddr) {
     }
   }
 
-  // Un seul appel eth_getLogs couvre toute la plage — pas de retard, ~75 CU vs 480 CU
-  let logs;
-  try {
-    logs = await callFallbackRpc(chainId, "eth_getLogs", [{
-      fromBlock: "0x" + fromBlock.toString(16),
-      toBlock:   "0x" + toBlock.toString(16),
-      address:   addresses,
-      topics:    [[...allTopics]]
-    }]);
-  } catch (err) {
-    console.error(`❌ eth_getLogs chain ${chainId}:`, err);
-    chainPointers.set(chainId, toBlock + 1);
-    return;
+  // eth_getLogs en chunks (free tier Alchemy = 10 blocs max par appel)
+  const logs = [];
+  for (let chunkFrom = fromBlock; chunkFrom <= toBlock; chunkFrom += LOGS_BLOCK_RANGE) {
+    const chunkTo = Math.min(chunkFrom + LOGS_BLOCK_RANGE - 1, toBlock);
+    let chunkLogs;
+    try {
+      chunkLogs = await callFallbackRpc(chainId, "eth_getLogs", [{
+        fromBlock: "0x" + chunkFrom.toString(16),
+        toBlock:   "0x" + chunkTo.toString(16),
+        address:   addresses,
+        topics:    [[...allTopics]]
+      }]);
+    } catch (err) {
+      console.error(`❌ eth_getLogs chain ${chainId} (blocs ${chunkFrom}-${chunkTo}):`, err);
+      break;
+    }
+    if (Array.isArray(chunkLogs)) logs.push(...chunkLogs);
   }
 
   const allEvents = [];
