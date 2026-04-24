@@ -47,6 +47,7 @@ const FALLBACK_RPC_URLS = new Map();
 if (process.env.ALCHEMY_BASE_RPC_URL)  FALLBACK_RPC_URLS.set(8453,  process.env.ALCHEMY_BASE_RPC_URL);
 if (process.env.ALCHEMY_ETH_RPC_URL)   FALLBACK_RPC_URLS.set(1,     process.env.ALCHEMY_ETH_RPC_URL);
 if (process.env.ALCHEMY_AVAX_RPC_URL)  FALLBACK_RPC_URLS.set(43114, process.env.ALCHEMY_AVAX_RPC_URL);
+if (process.env.ALCHEMY_HEMI_RPC_URL)  FALLBACK_RPC_URLS.set(43111, process.env.ALCHEMY_HEMI_RPC_URL);
 // RPC_URL_<chainId> — pour tout provider JSON-RPC (ex: RPC_URL_14 pour Flare)
 // Prend la priorité sur les vars Alchemy si les deux sont définies
 for (const [key, value] of Object.entries(process.env)) {

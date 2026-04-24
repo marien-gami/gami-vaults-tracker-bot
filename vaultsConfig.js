@@ -372,6 +372,39 @@ export const VAULTS = [
       },
     }
   },
+  {
+    name: "Gami Hemi USDC",
+    vaultAddress: "0xe9c300b75d0998f46446cab7997b4646d7cc33f8",
+    chainId: 43111,
+    trackedTokens: [
+      {
+        tokenAddress: "0xad11a8beb98bbf61dbb1aa0f6d6f2ecd87b35afa", // USDC
+        tokenSymbol: "USDC.e",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xe9c300b75d0998f46446cab7997b4646d7cc33f8", // gamihemiUSDC
+        tokenSymbol: "gamihemiUSDC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSPC
+      },
+    }
+  },
   
 // Gami Spectra MetaVaults
   
