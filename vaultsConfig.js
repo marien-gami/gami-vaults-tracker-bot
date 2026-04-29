@@ -374,7 +374,7 @@ export const VAULTS = [
   },
   {
     name: "Gami Hemi USDC",
-    vaultAddress: "0xe9c300b75d0998f46446cab7997b4646d7cc33f8",
+    vaultAddress: "0x1e32c96757c07775ca4fc796c4f4311722eaf35e",
     chainId: 43111,
     trackedTokens: [
       {
@@ -384,7 +384,7 @@ export const VAULTS = [
         minAmount: 0
       },
       {
-        tokenAddress: "0xe9c300b75d0998f46446cab7997b4646d7cc33f8", // gamihemiUSDC
+        tokenAddress: "0x1e32c96757c07775ca4fc796c4f4311722eaf35e", // gamihemiUSDC
         tokenSymbol: "gamihemiUSDC",
         tokenDecimals: 18,
         minAmount: 0
