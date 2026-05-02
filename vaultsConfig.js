@@ -318,8 +318,41 @@ export const VAULTS = [
         minAmount: 0
       },
       {
-        tokenAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916", // gamiUSPC
-        tokenSymbol: "gamiUSPC",
+        tokenAddress: "0xfab0f56c28e3f874b15922b213e696f37b670916", // gamicUSPC
+        tokenSymbol: "gamicUSPC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSPC
+      },
+    }
+  },
+  {
+    name: "Gami Leveraged USPC",
+    vaultAddress: "0x09252d2c4afca9b1479efdd39faa53de9ff23114",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x09252d2c4afca9b1479efdd39faa53de9ff23114", // gamilUSPC
+        tokenSymbol: "gamilUSPC",
         tokenDecimals: 18,
         minAmount: 0
       },
@@ -386,6 +419,39 @@ export const VAULTS = [
       {
         tokenAddress: "0x1e32c96757c07775ca4fc796c4f4311722eaf35e", // gamihemiUSDC
         tokenSymbol: "gamihemiUSDC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiUSPC
+      },
+    }
+  },
+  {
+    name: "Gami xBTCY",
+    vaultAddress: "0xb34447f729abfd21b3d8997fedcb07e86268a2b3",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xb34447f729abfd21b3d8997fedcb07e86268a2b3", // xBTCY
+        tokenSymbol: "xBTCY",
         tokenDecimals: 18,
         minAmount: 0
       },
