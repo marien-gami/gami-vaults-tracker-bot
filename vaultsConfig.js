@@ -446,7 +446,7 @@ export const VAULTS = [
       {
         tokenAddress: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", // cbBTC
         tokenSymbol: "cbBTC",
-        tokenDecimals: 6,
+        tokenDecimals: 8,
         minAmount: 0
       },
       {
