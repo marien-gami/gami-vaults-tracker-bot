@@ -440,17 +440,17 @@ export const VAULTS = [
   },
   {
     name: "Gami xBTCY",
-    vaultAddress: "0xb34447f729abfd21b3d8997fedcb07e86268a2b3",
+    vaultAddress: "0x57e6824a8b15b709cefb4ccef644ba1349057e77",
     chainId: 1,
     trackedTokens: [
       {
-        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
-        tokenSymbol: "USDC",
+        tokenAddress: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", // cbBTC
+        tokenSymbol: "cbBTC",
         tokenDecimals: 6,
         minAmount: 0
       },
       {
-        tokenAddress: "0xb34447f729abfd21b3d8997fedcb07e86268a2b3", // xBTCY
+        tokenAddress: "0x57e6824a8b15b709cefb4ccef644ba1349057e77", // xBTCY
         tokenSymbol: "xBTCY",
         tokenDecimals: 18,
         minAmount: 0
