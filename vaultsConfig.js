@@ -35,6 +35,35 @@ const TOPIC_ERC7540_DEPOSIT_REQUEST =
 const TOPIC_ERC7540_REDEEM_REQUEST =
   "0x1fdc681a13d8c5da54e301c7ce6542dcde4581e4725043fdab2db12ddc574506";
 
+// ── Topics Midas (DepositVault / RedemptionVault) ────────────────────────────
+// ⚠️ Midas normalise TOUS les montants des events à 18 décimales (base18),
+// quelle que soit la décimale du token sous-jacent (USDC 6 → émis en 18).
+// → dans trackedTokens, USDC doit être déclaré avec tokenDecimals: 18.
+
+// DepositInstant(address indexed user, address indexed tokenIn, uint256 amountUsd,
+//   uint256 amountToken, uint256 fee, uint256 minted, bytes32 referrerId)
+// topics[1]=user, topics[2]=tokenIn | data = [amountUsd(0), amountToken(1), fee(2), minted(3), referrerId(4)]
+const TOPIC_MIDAS_DEPOSIT_INSTANT =
+  "0xdd6865ec496cf9bdd5cb1661ab84cf4e86edc877208a54cbf642f69d744530c5";
+
+// DepositRequest(uint256 indexed requestId, address indexed user, address indexed tokenIn,
+//   uint256 amountToken, uint256 amountUsd, uint256 fee, uint256 tokenOutRate, bytes32 referrerId)
+// topics[1]=requestId, topics[2]=user, topics[3]=tokenIn | data = [amountToken(0), amountUsd(1), fee(2), tokenOutRate(3), referrerId(4)]
+const TOPIC_MIDAS_DEPOSIT_REQUEST =
+  "0x3704c9b13a68ac43d7f8a85f2700f0b4f89a11ed9e2bcac5324f0d228d409009";
+
+// RedeemInstant(address indexed user, address indexed tokenOut, uint256 amount,
+//   uint256 feeAmount, uint256 amountTokenOut)
+// topics[1]=user, topics[2]=tokenOut | data = [amount(0)=mToken, feeAmount(1), amountTokenOut(2)]
+const TOPIC_MIDAS_REDEEM_INSTANT =
+  "0x1af12536d161c2c30ad907b0abe442f94c4a7824f2463585b3fc893275247cce";
+
+// RedeemRequest(uint256 indexed requestId, address indexed user, address indexed tokenOut,
+//   uint256 amountMTokenIn, uint256 feeAmount)
+// topics[1]=requestId, topics[2]=user, topics[3]=tokenOut | data = [amountMTokenIn(0), feeAmount(1)]
+const TOPIC_MIDAS_REDEEM_REQUEST =
+  "0x55ba94d231fa70a45e82b0a1c6a60ef72e41bb2455385128ee5cf8d98c0c1c0e";
+
 export const VAULTS = [
 
 // Upshift Vaults
@@ -608,6 +637,73 @@ export const VAULTS = [
         callerTopicIndex: 1,
         amountDataSlot: 1,
         amountTokenIndex: 1  // gamiMSAUSDCdyn
+      },
+    }
+  },
+
+// Midas Vaults — Turtle Huma PST (turtlePST)
+//
+// Le token turtlePST (0xc462f87f78abdd27b1e41c9ede862275d2c7f36b) n'émet que
+// des events ERC20 : dépôts/rachats passent par deux contrats séparés.
+// ⚠️ Montants des events normalisés en base18 par Midas → USDC déclaré en 18 dec.
+
+  {
+    name: "Gami Midas turtlePST (Deposit)",
+    vaultAddress: "0x95ef0179867545bea9dbdab27955551c0802307e", // Midas DepositVault
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 18, // ⚠️ event Midas normalisé base18 (USDC réel = 6 dec)
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_MIDAS_DEPOSIT_INSTANT]: {
+        action: "Deposit",
+        callerTopicIndex: 1, // topics[1] = user
+        amountDataSlot: 1,   // data[1] = amountToken (USDC, base18)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_MIDAS_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 2, // topics[2] = user (topics[1] = requestId)
+        amountDataSlot: 0,   // data[0] = amountToken (USDC, base18)
+        amountTokenIndex: 0  // USDC
+      },
+    }
+  },
+  {
+    name: "Gami Midas turtlePST (Redeem)",
+    vaultAddress: "0xab09be3d1e02dfe1f0dbda460ff362bf1a5792fb", // Midas RedemptionVault
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 18, // ⚠️ event Midas normalisé base18
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xc462f87f78abdd27b1e41c9ede862275d2c7f36b", // turtlePST
+        tokenSymbol: "turtlePST",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_MIDAS_REDEEM_INSTANT]: {
+        action: "Redeem",
+        callerTopicIndex: 1, // topics[1] = user
+        amountDataSlot: 0,   // data[0] = amount (turtlePST racheté, base18)
+        amountTokenIndex: 1  // turtlePST
+      },
+      [TOPIC_MIDAS_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 2, // topics[2] = user (topics[1] = requestId)
+        amountDataSlot: 0,   // data[0] = amountMTokenIn (turtlePST, base18)
+        amountTokenIndex: 1  // turtlePST
       },
     }
   },
