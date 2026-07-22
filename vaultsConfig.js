@@ -468,6 +468,39 @@ export const VAULTS = [
     }
   },
   {
+    name: "Gami D1",
+    vaultAddress: "0x16b85563902556d205f5c2b4485df3d26b153f96",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x16b85563902556d205f5c2b4485df3d26b153f96", // gamid1
+        tokenSymbol: "gamid1",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamid1
+      },
+    }
+  },
+  {
     name: "Gami xBTCY",
     vaultAddress: "0x57e6824a8b15b709cefb4ccef644ba1349057e77",
     chainId: 1,
@@ -572,6 +605,42 @@ export const VAULTS = [
     }
   },
   
+// T3tris Vaults (Robinhood Chain) — infra ERC-7540 (mêmes topics que Lagoon)
+
+  {
+    name: "Gami T3tris WBTC",
+    vaultAddress: "0xe49eeb10595ec94a0b91189e3ff411cd77c824ec",
+    chainId: 4663, // Robinhood Chain
+    trackedTokens: [
+      {
+        tokenAddress: "0x6bac06600d220ac5ac281ad1f504d2cf0f90f6e6", // WBTC (Robinhood)
+        tokenSymbol: "WBTC",
+        tokenDecimals: 8,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xe49eeb10595ec94a0b91189e3ff411cd77c824ec", // gamiWBTC
+        tokenSymbol: "gamiWBTC",
+        tokenDecimals: 8,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 0  // WBTC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1,
+        amountDataSlot: 1,
+        amountTokenIndex: 1  // gamiWBTC
+      },
+    }
+  },
+
 // MSA Lagoon Vaults
 
   {
