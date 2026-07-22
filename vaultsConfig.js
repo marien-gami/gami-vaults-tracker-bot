@@ -609,7 +609,7 @@ export const VAULTS = [
 
   {
     name: "Gami T3tris WBTC",
-    vaultAddress: "0xe49eeb10595ec94a0b91189e3ff411cd77c824ec",
+    vaultAddress: "0xd5c6c79692715145098a65d1eb1f2a10c524f8e8",
     chainId: 4663, // Robinhood Chain
     trackedTokens: [
       {
@@ -619,7 +619,7 @@ export const VAULTS = [
         minAmount: 0
       },
       {
-        tokenAddress: "0xe49eeb10595ec94a0b91189e3ff411cd77c824ec", // gamiWBTC
+        tokenAddress: "0xd5c6c79692715145098a65d1eb1f2a10c524f8e8", // gamiWBTC
         tokenSymbol: "gamiWBTC",
         tokenDecimals: 8,
         minAmount: 0
