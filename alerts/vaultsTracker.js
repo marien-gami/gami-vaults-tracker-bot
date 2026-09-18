@@ -12,6 +12,9 @@
 // (eth_getBlockByNumber, eth_getTransactionReceipt) sont temps réel.
 
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { sendTelegramMessage } from "../telegram.js";
 import { VAULTS } from "../vaultsConfig.js";
 
@@ -55,14 +58,48 @@ for (const [key, value] of Object.entries(process.env)) {
   if (match && value) FALLBACK_RPC_URLS.set(parseInt(match[1], 10), value);
 }
 
-// Nombre maximum de blocs traités par tick (par chain)
-const MAX_BLOCKS_PER_TICK = parseInt(
-  process.env.MAX_BLOCKS_PER_TICK || "15",
-  10
-);
+// Nombre maximum de chunks eth_getLogs par tick et par chain.
+// Plafonne la taille d'un rattrapage : blocs/tick = LOGS_BLOCK_RANGE × MAX_CHUNKS_PER_TICK.
+// Exprimé en chunks (et non en blocs) pour s'adapter tout seul à la plage de chaque chain.
+// 60 laisse ≥5× de marge sur la chain la plus rapide en plage de 10 blocs (Avalanche,
+// ~113 blocs/tick), tout en restant 3× sous la rafale de 200 qui saturait le RPC.
+// Ne mord qu'en rattrapage : en régime nominal le nombre d'appels dépend des blocs écoulés.
+// Override par chain : MAX_CHUNKS_PER_TICK_<chainId>
+const MAX_CHUNKS_PER_TICK = parseInt(process.env.MAX_CHUNKS_PER_TICK || "60", 10);
 
-// Taille max d'une plage eth_getLogs — free tier Alchemy = 10 blocs
+function getMaxChunksPerTick(chainId) {
+  const override = process.env[`MAX_CHUNKS_PER_TICK_${chainId}`];
+  return override ? parseInt(override, 10) : MAX_CHUNKS_PER_TICK;
+}
+
+// Taille max d'une plage eth_getLogs — free tier Alchemy = 10 blocs.
+// Les RPC publics acceptent bien plus : rpc.mainnet.chain.robinhood.com encaisse
+// 2 000 000 de blocs par appel, et Robinhood produit ~10 blocs/s (~300/tick de 30s).
+// Override par chain : LOGS_BLOCK_RANGE_<chainId>
 const LOGS_BLOCK_RANGE = parseInt(process.env.LOGS_BLOCK_RANGE || "10", 10);
+const LOGS_BLOCK_RANGE_BY_CHAIN = new Map([
+  [4663, 2000] // Robinhood Chain — RPC public sans limite de plage
+]);
+
+function getLogsBlockRange(chainId) {
+  const override = process.env[`LOGS_BLOCK_RANGE_${chainId}`];
+  if (override) return parseInt(override, 10);
+  return LOGS_BLOCK_RANGE_BY_CHAIN.get(chainId) ?? LOGS_BLOCK_RANGE;
+}
+
+// Persistance des pointeurs — sans elle, tout redémarrage repart de la tête de
+// chaîne et les events survenus pendant l'arrêt sont perdus définitivement.
+const POINTERS_FILE =
+  process.env.POINTERS_FILE ||
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".pointers.json");
+
+// Garde-fou : au boot, on ne remonte jamais plus loin que ça dans le passé
+const MAX_CATCHUP_BLOCKS = parseInt(process.env.MAX_CATCHUP_BLOCKS || "100000", 10);
+
+// Alerte Telegram si le retard dépasse ce nombre de blocs (0 = désactivé)
+const LAG_ALERT_BLOCKS = parseInt(process.env.LAG_ALERT_BLOCKS || "20000", 10);
+const LAG_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+const lastLagAlert = new Map();
 
 // pointeurs par chain : chainId → nextBlock (number)
 const chainPointers = new Map();
@@ -123,19 +160,63 @@ function decodeUint256FromData(data, slotIndex = 0) {
 
 // -------- Fallback JSON-RPC (Alchemy) --------
 
-async function callFallbackRpc(chainId, method, params) {
+// Erreur RPC définitive (toutes les tentatives épuisées).
+// Volontairement distincte d'un résultat vide : un appel qui ÉCHOUE ne doit
+// jamais être confondu avec "aucun event sur cette plage".
+class RpcFailure extends Error {}
+
+async function callFallbackRpc(chainId, method, params, retries = RPC_MAX_RETRIES) {
   const url = FALLBACK_RPC_URLS.get(chainId);
   if (!url) return null;
+
+  let lastReason = "raison inconnue";
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await sleep(Math.min(500 * Math.pow(2, attempt - 1), 8000));
+    }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+      });
+      if (!res.ok) {
+        // 429 (Alchemy free tier) et 403 (WAF des RPC publics) sont transitoires
+        lastReason = `HTTP ${res.status}`;
+        console.warn(
+          `⚠️  RPC ${method} chain ${chainId} — ${lastReason}, tentative ${attempt + 1}/${retries + 1}`
+        );
+        continue;
+      }
+      const json = await res.json();
+      if (json?.error) {
+        lastReason = `RPC error ${json.error.code}: ${json.error.message}`;
+        console.warn(
+          `⚠️  RPC ${method} chain ${chainId} — ${lastReason}, tentative ${attempt + 1}/${retries + 1}`
+        );
+        continue;
+      }
+      return json?.result ?? null;
+    } catch (err) {
+      lastReason = err?.message ?? String(err);
+      console.warn(
+        `⚠️  RPC ${method} chain ${chainId} — ${lastReason}, tentative ${attempt + 1}/${retries + 1}`
+      );
+    }
+  }
+  throw new RpcFailure(
+    `${method} chain ${chainId} — échec après ${retries + 1} tentatives (${lastReason})`
+  );
+}
+
+// Variante tolérante : pour les appels d'enrichissement non critiques
+// (timestamp d'affichage) où un échec ne doit pas faire perdre l'event.
+// Une seule reprise : inutile de dépenser du quota pour du cosmétique.
+async function callFallbackRpcSoft(chainId, method, params) {
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json?.result ?? null;
-  } catch {
+    return await callFallbackRpc(chainId, method, params, 1);
+  } catch (err) {
+    console.warn(`⚠️  ${err.message} — on continue sans cette donnée`);
     return null;
   }
 }
@@ -199,7 +280,7 @@ async function rpcFetch(chainId, params) {
 
 async function getCurrentBlock(chainId) {
   // Alchemy en primaire si disponible
-  const alchemy = await callFallbackRpc(chainId, "eth_blockNumber", []);
+  const alchemy = await callFallbackRpcSoft(chainId, "eth_blockNumber", []);
   if (alchemy) return parseInt(alchemy, 16);
   // Routescan en backup
   const result = await rpcFetch(chainId, { action: "eth_blockNumber" });
@@ -211,7 +292,7 @@ async function getCurrentBlock(chainId) {
 async function getBlockByNumber(chainId, blockNumber) {
   const tag = "0x" + blockNumber.toString(16);
   // Alchemy en primaire si disponible
-  const alchemy = await callFallbackRpc(chainId, "eth_getBlockByNumber", [tag, true]);
+  const alchemy = await callFallbackRpcSoft(chainId, "eth_getBlockByNumber", [tag, true]);
   if (alchemy) return alchemy;
   // Routescan en backup
   return rpcFetch(chainId, { action: "eth_getBlockByNumber", tag, boolean: "true" });
@@ -220,7 +301,7 @@ async function getBlockByNumber(chainId, blockNumber) {
 // Retourne le receipt d'une transaction (logs inclus)
 async function getTransactionReceipt(chainId, txHash) {
   // Alchemy en primaire si disponible
-  const alchemy = await callFallbackRpc(chainId, "eth_getTransactionReceipt", [txHash]);
+  const alchemy = await callFallbackRpcSoft(chainId, "eth_getTransactionReceipt", [txHash]);
   if (alchemy) return alchemy;
   // Routescan en backup
   return rpcFetch(chainId, { action: "eth_getTransactionReceipt", txhash: txHash });
@@ -329,8 +410,26 @@ async function tickChain(chainId, vaultsByAddr) {
   const fromBlock = chainPointers.get(chainId) ?? currentBlock;
   if (fromBlock > currentBlock) return;
 
-  // Alchemy limite eth_getLogs à 2000 blocs par appel — cap de sécurité
-  const toBlock = Math.min(currentBlock, fromBlock + 1999);
+  const blockRange = getLogsBlockRange(chainId);
+  const maxChunks = getMaxChunksPerTick(chainId);
+  const toBlock = Math.min(
+    currentBlock,
+    fromBlock + blockRange * maxChunks - 1
+  );
+
+  // Heartbeat de retard : sans ça, un décrochage passe totalement inaperçu
+  const lag = currentBlock - fromBlock;
+  if (LAG_ALERT_BLOCKS > 0 && lag > LAG_ALERT_BLOCKS) {
+    const last = lastLagAlert.get(chainId) ?? 0;
+    console.warn(`⚠️  Chain ${chainId} en retard de ${lag} blocs (pointeur ${fromBlock}, tête ${currentBlock})`);
+    if (Date.now() - last > LAG_ALERT_COOLDOWN_MS) {
+      lastLagAlert.set(chainId, Date.now());
+      await sendTelegramMessage(
+        chatId,
+        `⚠️ <b>Tracker en retard</b>\nChain <b>${chainId}</b> : ${lag} blocs de retard\nPointeur ${fromBlock} / tête ${currentBlock}`
+      );
+    }
+  }
 
   // Construire les filtres : adresses des vaults + topic0s trackés
   const addresses = [...vaultsByAddr.keys()];
@@ -341,10 +440,13 @@ async function tickChain(chainId, vaultsByAddr) {
     }
   }
 
-  // eth_getLogs en chunks (free tier Alchemy = 10 blocs max par appel)
+  // eth_getLogs en chunks. Le pointeur n'avancera QUE jusqu'au dernier chunk
+  // réellement réussi : un chunk en échec est rescanné au tick suivant plutôt
+  // que perdu en silence (les events déjà alertés sont filtrés par seenKeys).
   const logs = [];
-  for (let chunkFrom = fromBlock; chunkFrom <= toBlock; chunkFrom += LOGS_BLOCK_RANGE) {
-    const chunkTo = Math.min(chunkFrom + LOGS_BLOCK_RANGE - 1, toBlock);
+  let lastGoodBlock = fromBlock - 1;
+  for (let chunkFrom = fromBlock; chunkFrom <= toBlock; chunkFrom += blockRange) {
+    const chunkTo = Math.min(chunkFrom + blockRange - 1, toBlock);
     let chunkLogs;
     try {
       chunkLogs = await callFallbackRpc(chainId, "eth_getLogs", [{
@@ -354,10 +456,21 @@ async function tickChain(chainId, vaultsByAddr) {
         topics:    [[...allTopics]]
       }]);
     } catch (err) {
-      console.error(`❌ eth_getLogs chain ${chainId} (blocs ${chunkFrom}-${chunkTo}):`, err);
+      console.error(
+        `❌ Chain ${chainId} — scan interrompu aux blocs ${chunkFrom}-${chunkTo} : ${err.message}. ` +
+        `Pointeur figé à ${lastGoodBlock + 1}, reprise au prochain tick.`
+      );
       break;
     }
-    if (Array.isArray(chunkLogs)) logs.push(...chunkLogs);
+    if (!Array.isArray(chunkLogs)) {
+      console.error(
+        `❌ Chain ${chainId} — réponse eth_getLogs inattendue sur ${chunkFrom}-${chunkTo}, ` +
+        `pointeur figé à ${lastGoodBlock + 1}`
+      );
+      break;
+    }
+    logs.push(...chunkLogs);
+    lastGoodBlock = chunkTo;
   }
 
   const allEvents = [];
@@ -378,15 +491,21 @@ async function tickChain(chainId, vaultsByAddr) {
       // Timestamp du bloc (avec cache)
       const blockNum = parseInt(log.blockNumber, 16);
       if (!blockTimestampCache.has(blockNum)) {
-        const block = await callFallbackRpc(chainId, "eth_getBlockByNumber", [
+        const block = await callFallbackRpcSoft(chainId, "eth_getBlockByNumber", [
           "0x" + blockNum.toString(16), false
         ]);
         blockTimestampCache.set(blockNum, block?.timestamp ?? null);
       }
 
-      // Tx pour récupérer tx.from si non présent dans les topics
-      const tx = (await callFallbackRpc(chainId, "eth_getTransactionByHash", [log.transactionHash]))
-        ?? { hash: log.transactionHash, from: null, blockNumber: log.blockNumber };
+      // Tx UNIQUEMENT si l'adresse appelante n'est pas déjà dans les topics.
+      // hash et blockNumber sont déjà portés par le log : dans le cas nominal
+      // (tous les vaults ERC-7540/4626 ici) cet appel RPC est inutile.
+      const eventConfig = topicMap.get((log.topics?.[0] || "").toLowerCase());
+      const callerIdx = eventConfig?.callerTopicIndex ?? 1;
+      const tx = log.topics?.[callerIdx]
+        ? { hash: log.transactionHash, from: null, blockNumber: log.blockNumber }
+        : (await callFallbackRpcSoft(chainId, "eth_getTransactionByHash", [log.transactionHash]))
+            ?? { hash: log.transactionHash, from: null, blockNumber: log.blockNumber };
 
       const event = processLog({
         vault,
@@ -400,7 +519,7 @@ async function tickChain(chainId, vaultsByAddr) {
     }
   }
 
-  const lastProcessedBlock = toBlock;
+  const lastProcessedBlock = lastGoodBlock;
 
   // Envoi dans l'ordre chronologique (plus ancien → plus récent)
   allEvents.sort((a, b) =>
@@ -421,8 +540,14 @@ async function tickChain(chainId, vaultsByAddr) {
     await sendTelegramMessage(chatId, msg);
   }
 
-  const nextPointer = lastProcessedBlock + 1;
-  chainPointers.set(chainId, nextPointer);
+  if (lastProcessedBlock < fromBlock) {
+    // Aucun chunk n'est passé : on ne touche pas au pointeur
+    console.warn(`⚠️  Chain ${chainId}: aucun bloc scanné ce tick, pointeur maintenu à ${fromBlock}`);
+    return;
+  }
+
+  chainPointers.set(chainId, lastProcessedBlock + 1);
+  savePointers();
   console.log(
     `🔎 Chain ${chainId}: blocs ${fromBlock}→${lastProcessedBlock} (${lastProcessedBlock - fromBlock + 1} blocs), events=${allEvents.length}`
   );
@@ -476,29 +601,87 @@ async function _tickAllChains() {
   );
 }
 
+// -------- Persistance des pointeurs --------
+
+function loadPointers() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(POINTERS_FILE, "utf8"));
+    const out = new Map();
+    for (const [k, v] of Object.entries(raw)) {
+      const chainId = Number(k);
+      const block = Number(v);
+      if (Number.isInteger(chainId) && Number.isInteger(block) && block > 0) {
+        out.set(chainId, block);
+      }
+    }
+    return out;
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.error(`❌ Lecture de ${POINTERS_FILE} impossible : ${err.message}`);
+    }
+    return new Map();
+  }
+}
+
+function savePointers() {
+  try {
+    const tmp = `${POINTERS_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(chainPointers), null, 2));
+    fs.renameSync(tmp, POINTERS_FILE); // écriture atomique
+  } catch (err) {
+    console.error(`❌ Écriture de ${POINTERS_FILE} impossible : ${err.message}`);
+  }
+}
+
 // -------- Initialisation --------
 
 async function initializePointers() {
   const chainIds = [...new Set(VAULTS.map((v) => v.chainId).filter(Boolean))];
+  const saved = loadPointers();
 
   for (const chainId of chainIds) {
     try {
       const block = await getCurrentBlock(chainId);
-      chainPointers.set(chainId, block);
-      console.log(`📦 Chain ${chainId} — bloc courant : ${block}`);
+      if (!block) {
+        console.error(`❌ Bloc courant indisponible (chain ${chainId}) — chain ignorée ce boot`);
+        continue;
+      }
+
+      const savedPointer = saved.get(chainId);
+      if (!savedPointer) {
+        chainPointers.set(chainId, block);
+        console.log(`📦 Chain ${chainId} — pas de pointeur sauvegardé, démarrage à la tête : ${block}`);
+      } else if (savedPointer > block) {
+        // Pointeur en avance sur la tête (reset de chain, mauvais RPC…)
+        chainPointers.set(chainId, block);
+        console.warn(`⚠️  Chain ${chainId} — pointeur sauvegardé (${savedPointer}) au-delà de la tête (${block}), recalé`);
+      } else if (block - savedPointer > MAX_CATCHUP_BLOCKS) {
+        const clamped = block - MAX_CATCHUP_BLOCKS;
+        chainPointers.set(chainId, clamped);
+        const skipped = clamped - savedPointer;
+        console.warn(`⚠️  Chain ${chainId} — arrêt trop long : ${block - savedPointer} blocs de retard, reprise à ${clamped} (${skipped} blocs NON scannés)`);
+        await sendTelegramMessage(
+          chatId,
+          `⚠️ <b>Trou de scan au démarrage</b>\nChain <b>${chainId}</b> : ${skipped} blocs non scannés (${savedPointer} → ${clamped})\nÀ vérifier manuellement.`
+        );
+      } else {
+        chainPointers.set(chainId, savedPointer);
+        console.log(`📦 Chain ${chainId} — reprise au bloc ${savedPointer} (tête : ${block}, ${block - savedPointer} blocs à rattraper)`);
+      }
     } catch (err) {
       console.error(
         `❌ Impossible de récupérer le bloc courant (chain ${chainId}):`,
         err
       );
-      chainPointers.set(chainId, 0);
     }
   }
+  savePointers();
 }
 
 export async function startVaultsTracker() {
   console.log(
-    `🚀 gami-vaults-tracker-bot (block polling) démarré. Check toutes les ${CHECK_INTERVAL_SECONDS}s, max ${MAX_BLOCKS_PER_TICK} blocs/tick.`
+    `🚀 gami-vaults-tracker-bot démarré. Check toutes les ${CHECK_INTERVAL_SECONDS}s, ` +
+    `max ${MAX_CHUNKS_PER_TICK} chunks eth_getLogs/tick, pointeurs dans ${POINTERS_FILE}.`
   );
 
   await initializePointers();
