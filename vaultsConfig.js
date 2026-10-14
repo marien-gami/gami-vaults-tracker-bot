@@ -533,6 +533,208 @@ export const VAULTS = [
       },
     }
   },
+
+  // Gami Lagoon Vetro Vaults
+  // USD
+  {
+    name: "Vetro USDC",
+    vaultAddress: "0xca66317ea1e566d72fd1d333c22bb0223273226a",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        tokenSymbol: "USDC",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xca66317ea1e566d72fd1d333c22bb0223273226a", // GamisdUSDC
+        tokenSymbol: "gvUSDC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
+    }
+  },
+  {
+    name: "Vetro USDT",
+    vaultAddress: "0x08d97f1b434d9e164218ee1dd9611290da238b79",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDC
+        tokenSymbol: "USDT",
+        tokenDecimals: 6,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x08d97f1b434d9e164218ee1dd9611290da238b79", // GamisdUSDC
+        tokenSymbol: "gvUSDT",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
+    }
+  },
+  {
+    name: "Vetro frxUSD",
+    vaultAddress: "0xd43c0692d6dee6e1b76a2b4cc5ca89ff579d79de",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xcacd6fd266af91b8aed52accc382b4e165586e29", // USDC
+        tokenSymbol: "frxUSD",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xd43c0692d6dee6e1b76a2b4cc5ca89ff579d79de", // GamisdUSDC
+        tokenSymbol: "gvfrxUSD",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
+    }
+  },
+  // BTC
+  {
+    name: "Vetro WBTC",
+    vaultAddress: "0xe88f42cd673b2495b96494197bae87b4d4a5ce0d",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", // USDC
+        tokenSymbol: "WBTC",
+        tokenDecimals: 8,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0xe88f42cd673b2495b96494197bae87b4d4a5ce0d", // GamisdUSDC
+        tokenSymbol: "gvWBTC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
+    }
+  },
+  {
+    name: "Vetro cbBTC",
+    vaultAddress: "0x80370c23b42769d69103203d95b535541f8ffe42",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", // USDC
+        tokenSymbol: "cbBTC",
+        tokenDecimals: 8,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x80370c23b42769d69103203d95b535541f8ffe42", // GamisdUSDC
+        tokenSymbol: "gvcbBTC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
+    }
+  },
+  {
+    name: "Vetro hemiBTC",
+    vaultAddress: "0x57637dc7a759da12865b933ee1b81eff246ec7cc",
+    chainId: 1,
+    trackedTokens: [
+      {
+        tokenAddress: "0x06ea695b91700071b161a434fed42d1dcbad9f00", // USDC
+        tokenSymbol: "hemiBTC",
+        tokenDecimals: 8,
+        minAmount: 0
+      },
+      {
+        tokenAddress: "0x57637dc7a759da12865b933ee1b81eff246ec7cc", // GamisdUSDC
+        tokenSymbol: "gvhemiBTC",
+        tokenDecimals: 18,
+        minAmount: 0
+      },
+    ],
+    trackedEventsMap: {
+      [TOPIC_ERC7540_DEPOSIT_REQUEST]: {
+        action: "Request Deposit",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = assets (USDC)
+        amountTokenIndex: 0  // USDC
+      },
+      [TOPIC_ERC7540_REDEEM_REQUEST]: {
+        action: "Request Withdraw",
+        callerTopicIndex: 1, // topics[1] = controller
+        amountDataSlot: 1,   // data[0] = sender, data[1] = shares
+        amountTokenIndex: 1  // gamisdUSDC
+      },
+    }
+  },
   
 // Gami Spectra MetaVaults
   
