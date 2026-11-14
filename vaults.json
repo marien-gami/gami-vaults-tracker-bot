@@ -210,6 +210,96 @@
     }
   },
   {
+    "name": "Vetro USDC",
+    "address": "0xca66317ea1e566d72fd1d333c22bb0223273226a",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gvUSDC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro USDT",
+    "address": "0x08d97f1b434d9e164218ee1dd9611290da238b79",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "symbol": "USDT",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gvUSDT",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro frxUSD",
+    "address": "0xd43c0692d6dee6e1b76a2b4cc5ca89ff579d79de",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xcacd6fd266af91b8aed52accc382b4e165586e29",
+      "symbol": "frxUSD",
+      "decimals": 18
+    },
+    "share": {
+      "symbol": "gvfrxUSD",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro WBTC",
+    "address": "0xe88f42cd673b2495b96494197bae87b4d4a5ce0d",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "symbol": "WBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gvWBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro cbBTC",
+    "address": "0x80370c23b42769d69103203d95b535541f8ffe42",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+      "symbol": "cbBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gvcbBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro hemiBTC",
+    "address": "0x57637dc7a759da12865b933ee1b81eff246ec7cc",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x06ea695b91700071b161a434fed42d1dcbad9f00",
+      "symbol": "hemiBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gvhemiBTC",
+      "decimals": 18
+    }
+  },
+  {
     "name": "Gami Spectra USDC Metavault",
     "address": "0x776F95321a0285F8BCde149E3264D16DC08da69a",
     "chainId": 8453,
