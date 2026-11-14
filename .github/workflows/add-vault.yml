@@ -1,0 +1,108 @@
+name: Add vault
+
+# Ajoute un vault depuis l'onglet Actions de GitHub → "Add vault" → "Run workflow".
+# Symbole et décimales sont lus on-chain ; le workflow valide, lance les tests
+# et ouvre une Pull Request (ou pousse directement sur main si demandé).
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Nom affiché dans Telegram (ex. Gami WBTC)"
+        required: true
+      address:
+        description: "Adresse du contrat qui émet les events (0x…)"
+        required: true
+      chain:
+        description: "Chain"
+        required: true
+        type: choice
+        options:
+          - "1 - Ethereum"
+          - "8453 - Base"
+          - "43114 - Avalanche"
+          - "43111 - Hemi"
+          - "14 - Flare"
+          - "4663 - Robinhood Chain"
+      type:
+        description: "Type de vault"
+        required: true
+        type: choice
+        options:
+          - "erc7540 - Lagoon / T3tris (Request Deposit / Request Withdraw)"
+          - "erc4626 - Upshift (Deposit / Withdraw)"
+          - "midas-deposit - Midas DepositVault"
+          - "midas-redeem - Midas RedemptionVault"
+      asset_address:
+        description: "Midas uniquement : token de paiement (ex. USDC). Laisser vide sinon."
+        required: false
+      share_symbol:
+        description: "Optionnel : forcer le symbole de la share (sinon lu on-chain)"
+        required: false
+      direct_commit:
+        description: "Pousser directement sur main (sinon : ouvre une Pull Request)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  add-vault:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ajouter le vault (lecture on-chain)
+        id: add
+        env:
+          IN_NAME: ${{ inputs.name }}
+          IN_ADDRESS: ${{ inputs.address }}
+          IN_CHAIN: ${{ inputs.chain }}
+          IN_TYPE: ${{ inputs.type }}
+          IN_ASSET_ADDRESS: ${{ inputs.asset_address }}
+          IN_SHARE_SYMBOL: ${{ inputs.share_symbol }}
+        run: |
+          args=(--name "$IN_NAME" --address "$IN_ADDRESS" --chain "$IN_CHAIN" --type "$IN_TYPE")
+          [ -n "$IN_ASSET_ADDRESS" ] && args+=(--asset-address "$IN_ASSET_ADDRESS")
+          [ -n "$IN_SHARE_SYMBOL" ] && args+=(--share-symbol "$IN_SHARE_SYMBOL")
+          node scripts/add-vault.js "${args[@]}"
+
+      - run: npm test
+
+      - name: Commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUMMARY: ${{ steps.add.outputs.summary }}
+          DIRECT: ${{ inputs.direct_commit }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$DIRECT" = "true" ]; then
+            git commit -am "add: vault $SUMMARY"
+            git push origin HEAD:main
+            echo "✅ Poussé sur main : $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          else
+            branch="add-vault/${{ github.run_id }}"
+            git checkout -b "$branch"
+            git commit -am "add: vault $SUMMARY"
+            git push origin "$branch"
+            url=$(gh pr create --base main --head "$branch" \
+              --title "add: vault $SUMMARY" \
+              --body "Ajout automatique via le workflow **Add vault**.
+
+          \`\`\`diff
+          $(git diff HEAD~1 -- vaults.json)
+          \`\`\`
+
+          Vérifier le nom, les symboles et les décimales, puis merger : le bot se redéploie.")
+            echo "✅ Pull Request : $url" >> "$GITHUB_STEP_SUMMARY"
+          fi
