@@ -1,9 +1,9 @@
-// bot/commands.js — Commandes Telegram : /help, /vaults, /addvault.
+// bot/commands.js — Telegram commands: /help, /vaults, /addvault.
 //
-// Toutes les dépendances sont injectées (API Telegram, GitHub, RPC…) pour être testables.
+// All dependencies are injected (Telegram API, GitHub, RPC…) so this is testable.
 //
-// /addvault : aperçu on-chain → bouton ✅ → workflow GitHub "Add vault" (commit direct
-// sur main) → Render redéploie → le vault est suivi.
+// /addvault: on-chain preview → ✅ button → GitHub "Add vault" workflow (direct
+// commit to main) → Render redeploys → the vault is tracked.
 
 import crypto from "node:crypto";
 import { CHAINS } from "../chains.js";
@@ -18,20 +18,20 @@ export const escapeHtml = (s) =>
 const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export const HELP_TEXT =
-  `<b>Commandes</b>\n` +
-  `/vaults — liste des vaults suivis\n` +
-  `/addvault — ajouter un vault (admins)\n\n` +
-  `<b>Ajouter un vault</b>\n` +
-  `<code>/addvault &lt;adresse&gt; &lt;chain&gt; &lt;type&gt; &lt;nom&gt;</code>\n` +
-  `Ex. <code>/addvault 0xabc… eth 7540 Gami WBTC</code>\n\n` +
-  `Chains : ${Object.entries(CHAINS).map(([id, c]) => `${c.name} (${id})`).join(", ")}\n` +
-  `Types : <code>7540</code> (Lagoon, T3tris), <code>4626</code> (Upshift), ` +
+  `<b>Commands</b>\n` +
+  `/vaults — list tracked vaults\n` +
+  `/addvault — add a vault (admins)\n\n` +
+  `<b>Add a vault</b>\n` +
+  `<code>/addvault &lt;address&gt; &lt;chain&gt; &lt;type&gt; &lt;name&gt;</code>\n` +
+  `E.g. <code>/addvault 0xabc… eth 7540 Gami WBTC</code>\n\n` +
+  `Chains: ${Object.entries(CHAINS).map(([id, c]) => `${c.name} (${id})`).join(", ")}\n` +
+  `Types: <code>7540</code> (Lagoon, T3tris), <code>4626</code> (Upshift), ` +
   `<code>midas-deposit</code>, <code>midas-redeem</code>\n\n` +
-  `Options : <code>asset=0x…</code> (token de paiement, obligatoire pour Midas), ` +
-  `<code>symbol=XXX</code> (forcer le symbole de la share)\n\n` +
-  `Symbole et décimales sont lus on-chain ; un aperçu est affiché avant confirmation.`;
+  `Options: <code>asset=0x…</code> (payment token, required for Midas), ` +
+  `<code>symbol=XXX</code> (override the share symbol)\n\n` +
+  `Symbol and decimals are read on-chain; a preview is shown before confirmation.`;
 
-// "/addvault@MonBot 0x… eth 7540 Gami WBTC asset=0x…" → champs
+// "/addvault@MyBot 0x… eth 7540 Gami WBTC asset=0x…" → fields
 export function parseAddVaultArgs(text) {
   const tokens = text.trim().split(/\s+/).slice(1);
   const opts = {};
@@ -58,7 +58,7 @@ export function formatVaultList(entries) {
     if (!byChain.has(v.chainId)) byChain.set(v.chainId, []);
     byChain.get(v.chainId).push(v);
   }
-  const parts = [`<b>${entries.length} vaults suivis</b>`];
+  const parts = [`<b>${entries.length} vaults tracked</b>`];
   for (const [chainId, list] of byChain) {
     parts.push(`\n<b>${escapeHtml(CHAINS[chainId]?.name ?? chainId)}</b>`);
     for (const v of list) {
@@ -70,23 +70,23 @@ export function formatVaultList(entries) {
 
 export function formatPreview(entry) {
   const share = entry.share
-    ? `Share : <b>${escapeHtml(entry.share.symbol)}</b> (${entry.share.decimals} déc.)` +
+    ? `Share: <b>${escapeHtml(entry.share.symbol)}</b> (${entry.share.decimals} dec.)` +
       (entry.share.address ? ` <code>${short(entry.share.address)}</code>` : "") + "\n"
     : "";
   return (
-    `<b>Ajouter ce vault ?</b>\n\n` +
-    `Nom : <b>${escapeHtml(entry.name)}</b>\n` +
-    `Adresse : <code>${entry.address}</code>\n` +
-    `Chain : ${escapeHtml(CHAINS[entry.chainId].name)} (${entry.chainId})\n` +
-    `Type : ${escapeHtml(VAULT_TYPES[entry.type].label)}\n` +
-    `Asset : <b>${escapeHtml(entry.asset.symbol)}</b> (${entry.asset.decimals} déc.) <code>${short(entry.asset.address)}</code>\n` +
+    `<b>Add this vault?</b>\n\n` +
+    `Name: <b>${escapeHtml(entry.name)}</b>\n` +
+    `Address: <code>${entry.address}</code>\n` +
+    `Chain: ${escapeHtml(CHAINS[entry.chainId].name)} (${entry.chainId})\n` +
+    `Type: ${escapeHtml(VAULT_TYPES[entry.type].label)}\n` +
+    `Asset: <b>${escapeHtml(entry.asset.symbol)}</b> (${entry.asset.decimals} dec.) <code>${short(entry.asset.address)}</code>\n` +
     share +
-    (entry.type.startsWith("midas") ? `<i>Midas : montants en base18, géré automatiquement.</i>\n` : "") +
-    `\nLe vault sera poussé sur main et suivi après le redéploiement (~2-3 min).`
+    (entry.type.startsWith("midas") ? `<i>Midas: amounts in base18, handled automatically.</i>\n` : "") +
+    `\nThe vault will be pushed to main and tracked after the redeploy (~2-3 min).`
   );
 }
 
-// Valeurs exactes attendues par .github/workflows/add-vault.yml
+// Exact values expected by .github/workflows/add-vault.yml
 export function workflowInputs(entry, { shareSymbolOverride, requestId }) {
   return {
     name: entry.name,
@@ -101,19 +101,19 @@ export function workflowInputs(entry, { shareSymbolOverride, requestId }) {
 }
 
 /**
- * deps :
- *   api(method, body)            → appel API Telegram
- *   chatId                       → chat autorisé (groupe des alertes)
- *   adminIds: Set<number>        → users autorisés à /addvault
- *   getEntries()                 → vaults.json actuel
- *   buildEntry(input)            → Promise<entry> (lève VaultInputError)
- *   github | null                → client lib/github.js (null = /addvault désactivé)
+ * deps:
+ *   api(method, body)            → Telegram API call
+ *   chatId                       → allowed chat (the alerts group)
+ *   adminIds: Set<number>        → users allowed to /addvault
+ *   getEntries()                 → current vaults.json
+ *   buildEntry(input)            → Promise<entry> (throws VaultInputError)
+ *   github | null                → lib/github.js client (null = /addvault disabled)
  *   logger
  */
 export function createCommandHandler(deps) {
   const { api, chatId, adminIds, getEntries, buildEntry, github, logger = console } = deps;
   const pending = new Map();   // id → { entry, userId, shareSymbolOverride, expires }
-  const inFlight = new Set();  // "chainId:address" en cours d'ajout (avant redéploiement)
+  const inFlight = new Set();  // "chainId:address" being added (before the redeploy)
 
   const reply = (chat, text, extra = {}) =>
     api("sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
@@ -124,27 +124,27 @@ export function createCommandHandler(deps) {
   async function onAddVault(msg) {
     const userId = msg.from?.id;
     if (!adminIds.has(userId)) {
-      return reply(msg.chat.id, `⛔ Réservé aux admins. Ton user ID Telegram : <code>${userId}</code> (à ajouter dans ADMIN_USER_IDS).`);
+      return reply(msg.chat.id, `⛔ Admins only. Your Telegram user ID: <code>${userId}</code> (add it to ADMIN_USER_IDS).`);
     }
     if (!github) {
-      return reply(msg.chat.id, "⚙️ /addvault désactivé : GITHUB_TOKEN manquant dans la config du bot.");
+      return reply(msg.chat.id, "⚙️ /addvault is disabled: GITHUB_TOKEN missing from the bot config.");
     }
     const input = parseAddVaultArgs(msg.text);
     if (!input.address || !input.chain || !input.type || !input.name) {
-      return reply(msg.chat.id, `Usage : <code>/addvault &lt;adresse&gt; &lt;chain&gt; &lt;type&gt; &lt;nom&gt;</code>\nVoir /help`);
+      return reply(msg.chat.id, `Usage: <code>/addvault &lt;address&gt; &lt;chain&gt; &lt;type&gt; &lt;name&gt;</code>\nSee /help`);
     }
 
-    const wait = await reply(msg.chat.id, "🔎 Lecture du contrat on-chain…");
+    const wait = await reply(msg.chat.id, "🔎 Reading the contract on-chain…");
     let entry;
     try {
       entry = await buildEntry(input);
     } catch (err) {
-      const text = err instanceof VaultInputError ? `❌ ${escapeHtml(err.message)}` : `❌ Erreur : ${escapeHtml(err.message)}`;
+      const text = err instanceof VaultInputError ? `❌ ${escapeHtml(err.message)}` : `❌ Error: ${escapeHtml(err.message)}`;
       return api("editMessageText", { chat_id: msg.chat.id, message_id: wait.message_id, text, parse_mode: "HTML" });
     }
     const key = `${entry.chainId}:${entry.address.toLowerCase()}`;
     if (inFlight.has(key)) {
-      return api("editMessageText", { chat_id: msg.chat.id, message_id: wait.message_id, text: "⏳ Ce vault est déjà en cours d'ajout." });
+      return api("editMessageText", { chat_id: msg.chat.id, message_id: wait.message_id, text: "⏳ This vault is already being added." });
     }
 
     const id = crypto.randomBytes(6).toString("hex");
@@ -156,8 +156,8 @@ export function createCommandHandler(deps) {
       parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [[
-          { text: "✅ Confirmer", callback_data: `av:ok:${id}` },
-          { text: "❌ Annuler", callback_data: `av:no:${id}` }
+          { text: "✅ Confirm", callback_data: `av:ok:${id}` },
+          { text: "❌ Cancel", callback_data: `av:no:${id}` }
         ]]
       }
     });
@@ -174,51 +174,51 @@ export function createCommandHandler(deps) {
 
     if (!p || p.expires < Date.now()) {
       pending.delete(id);
-      await api("answerCallbackQuery", { callback_query_id: cb.id, text: "Demande expirée, relance /addvault." });
-      return edit("⌛ Demande expirée.");
+      await api("answerCallbackQuery", { callback_query_id: cb.id, text: "Request expired, run /addvault again." });
+      return edit("⌛ Request expired.");
     }
     if (cb.from.id !== p.userId) {
-      return api("answerCallbackQuery", { callback_query_id: cb.id, text: "Seul l'auteur de la demande peut confirmer." });
+      return api("answerCallbackQuery", { callback_query_id: cb.id, text: "Only the author of the request can confirm." });
     }
     pending.delete(id);
 
     if (action === "no") {
-      await api("answerCallbackQuery", { callback_query_id: cb.id, text: "Annulé" });
-      return edit(`🚫 Ajout de <b>${escapeHtml(p.entry.name)}</b> annulé.`);
+      await api("answerCallbackQuery", { callback_query_id: cb.id, text: "Cancelled" });
+      return edit(`🚫 Adding <b>${escapeHtml(p.entry.name)}</b> cancelled.`);
     }
 
     const key = `${p.entry.chainId}:${p.entry.address.toLowerCase()}`;
     inFlight.add(key);
-    await api("answerCallbackQuery", { callback_query_id: cb.id, text: "C'est parti" });
+    await api("answerCallbackQuery", { callback_query_id: cb.id, text: "On it" });
     const requestId = `tg-${id}`;
     try {
       await github.dispatchAddVault(workflowInputs(p.entry, { shareSymbolOverride: p.shareSymbolOverride, requestId }));
     } catch (err) {
       inFlight.delete(key);
       logger.error(`❌ ${err.message}`);
-      return edit(`❌ Impossible de lancer le workflow GitHub : ${escapeHtml(err.message)}`);
+      return edit(`❌ Could not start the GitHub workflow: ${escapeHtml(err.message)}`);
     }
-    await edit(`⏳ Ajout de <b>${escapeHtml(p.entry.name)}</b> en cours (workflow GitHub)…`);
+    await edit(`⏳ Adding <b>${escapeHtml(p.entry.name)}</b> (GitHub workflow running)…`);
 
-    // Suivi en arrière-plan : ne bloque pas la réception des autres commandes
+    // Follow-up in the background: doesn't block other commands
     github.waitForRun(requestId).then(async ({ status, url }) => {
       if (status !== "success") inFlight.delete(key);
       const text = status === "success"
-        ? `✅ <b>${escapeHtml(p.entry.name)}</b> ajouté à vaults.json. Suivi actif après le redéploiement Render (~2-3 min).`
+        ? `✅ <b>${escapeHtml(p.entry.name)}</b> added to vaults.json. Tracking starts after the Render redeploy (~2-3 min).`
         : status === "timeout"
-          ? `⌛ Workflow toujours en cours pour <b>${escapeHtml(p.entry.name)}</b> : <a href="${url}">voir sur GitHub</a>`
-          : `❌ Échec de l'ajout de <b>${escapeHtml(p.entry.name)}</b> (${status}) : <a href="${url}">voir les logs</a>`;
+          ? `⌛ Workflow still running for <b>${escapeHtml(p.entry.name)}</b>: <a href="${url}">see on GitHub</a>`
+          : `❌ Failed to add <b>${escapeHtml(p.entry.name)}</b> (${status}): <a href="${url}">see the logs</a>`;
       await edit(text).catch((e) => logger.error(`❌ ${e.message}`));
     });
   }
 
-  // Point d'entrée : un objet Update de l'API Telegram
+  // Entry point: a Telegram API Update object
   async function handleUpdate(update) {
     if (update.callback_query) return onCallback(update.callback_query);
 
     const msg = update.message;
     if (!msg?.text?.startsWith("/")) return;
-    if (!isAllowedChat(msg)) return; // silence total hors du groupe / des admins
+    if (!isAllowedChat(msg)) return; // stay silent outside the group / admin DMs
 
     const command = msg.text.split(/\s+/)[0].split("@")[0].toLowerCase();
     switch (command) {

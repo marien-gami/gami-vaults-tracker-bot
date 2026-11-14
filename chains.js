@@ -1,11 +1,11 @@
-// chains.js — Registre des chains supportées.
+// chains.js — Registry of supported chains.
 //
-// rpcUrls        : RPC publics par défaut, essayés dans l'ordre (repli automatique).
-//                  Chacun a été testé sur eth_getLogs avec une plage de logsBlockRange blocs.
-//                  RPC_URL_<chainId> dans l'env (liste séparée par des virgules) passe DEVANT.
-// logsBlockRange : taille max d'une plage eth_getLogs. Override : LOGS_BLOCK_RANGE_<chainId>.
+// rpcUrls        : default public RPCs, tried in order (automatic failover).
+//                  Each one was tested with eth_getLogs over a logsBlockRange-block range.
+//                  RPC_URL_<chainId> in the env (comma-separated list) goes IN FRONT of them.
+// logsBlockRange : max eth_getLogs block range. Override: LOGS_BLOCK_RANGE_<chainId>.
 //
-// Pour ajouter une chain : ajouter une entrée ici, puis des vaults dans vaults.json.
+// To add a chain: add an entry here, then vaults in vaults.json.
 
 export const CHAINS = {
   1: {

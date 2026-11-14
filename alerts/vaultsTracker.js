@@ -1,13 +1,13 @@
-// alerts/vaultsTracker.js — Suivi des events de vaults via eth_getLogs
+// alerts/vaultsTracker.js — Vault event tracking via eth_getLogs
 //
-// À chaque tick et pour chaque chain :
-//   1. eth_blockNumber → tête de chaîne
-//   2. eth_getLogs par plages (LOGS_BLOCK_RANGE) et paquets d'adresses (LOGS_MAX_ADDRESSES)
-//      depuis le pointeur persistant jusqu'à la tête
-//   3. décodage des logs (alerts/events.js) → messages Telegram
-//   4. le pointeur n'avance que jusqu'à la dernière plage réellement scannée
+// On each tick, for each chain:
+//   1. eth_blockNumber → chain head
+//   2. eth_getLogs in ranges (LOGS_BLOCK_RANGE) and address batches (LOGS_MAX_ADDRESSES)
+//      from the persisted pointer up to the head
+//   3. log decoding (alerts/events.js) → Telegram messages
+//   4. the pointer only advances up to the last range that was actually scanned
 //
-// RPC : voir alerts/rpc.js (plusieurs URLs par chain, repli automatique) et chains.js.
+// RPC: see alerts/rpc.js (several URLs per chain, automatic failover) and chains.js.
 
 import "dotenv/config";
 import fs from "node:fs";
@@ -24,35 +24,35 @@ const chatId = process.env.CHAT_ID;
 const CHECK_INTERVAL_SECONDS = parseInt(process.env.CHECK_INTERVAL_SECONDS || "30", 10);
 const CHECK_EVERY_MS = CHECK_INTERVAL_SECONDS * 1000;
 
-// Nombre max de plages eth_getLogs par tick et par chain (borne les rattrapages).
-// Avec des plages de 2000 blocs, 20 plages = 40 000 blocs par tick : largement assez.
-// Override par chain : MAX_CHUNKS_PER_TICK_<chainId>
+// Max eth_getLogs ranges per tick and per chain (bounds catch-ups).
+// With 2000-block ranges, 20 ranges = 40,000 blocks per tick: plenty.
+// Per-chain override: MAX_CHUNKS_PER_TICK_<chainId>
 const MAX_CHUNKS_PER_TICK = parseInt(process.env.MAX_CHUNKS_PER_TICK || "20", 10);
 function getMaxChunksPerTick(chainId) {
   const override = process.env[`MAX_CHUNKS_PER_TICK_${chainId}`];
   return override ? parseInt(override, 10) : MAX_CHUNKS_PER_TICK;
 }
 
-// Persistance des pointeurs — sans elle, tout redémarrage repart de la tête de
-// chaîne et les events survenus pendant l'arrêt sont perdus définitivement.
+// Pointer persistence — without it, every restart starts again from the chain
+// head and events that happened during the downtime are lost for good.
 const POINTERS_FILE =
   process.env.POINTERS_FILE ||
   path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".pointers.json");
 
-// Garde-fou : au boot, on ne remonte jamais plus loin que ça dans le passé
+// Safety net: at boot, never go further back than this
 const MAX_CATCHUP_BLOCKS = parseInt(process.env.MAX_CATCHUP_BLOCKS || "100000", 10);
 
-// Alerte Telegram si le retard dépasse ce nombre de blocs (0 = désactivé)
+// Telegram alert if the lag exceeds this many blocks (0 = disabled)
 const LAG_ALERT_BLOCKS = parseInt(process.env.LAG_ALERT_BLOCKS || "20000", 10);
 const LAG_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 const lastLagAlert = new Map();
 
 const rpc = createRpcClient();
 
-// chainId → prochain bloc à scanner
+// chainId → next block to scan
 const chainPointers = new Map();
 
-// anti-doublons : "chainId:txHash:logIndex" (borné pour ne pas grossir indéfiniment)
+// de-duplication: "chainId:txHash:logIndex" (bounded so it doesn't grow forever)
 const seenKeys = new Set();
 const SEEN_KEYS_MAX = 50_000;
 function markSeen(key) {
@@ -94,14 +94,14 @@ async function getCurrentBlock(chainId) {
   }
 }
 
-// -------- Tick par chain --------
+// -------- Per-chain tick --------
 
 async function tickChain(chainId, group) {
   const currentBlock = await getCurrentBlock(chainId);
   if (!currentBlock) return;
 
   if (!chainPointers.has(chainId)) {
-    // Chain ignorée au boot (RPC indisponible) : on démarre maintenant
+    // Chain skipped at boot (RPC unavailable): start now
     chainPointers.set(chainId, currentBlock);
     savePointers();
   }
@@ -111,21 +111,21 @@ async function tickChain(chainId, group) {
   const blockRange = getLogsBlockRange(chainId);
   const toBlock = Math.min(currentBlock, fromBlock + blockRange * getMaxChunksPerTick(chainId) - 1);
 
-  // Heartbeat de retard : sans ça, un décrochage passe totalement inaperçu
+  // Lag heartbeat: without it, falling behind goes completely unnoticed
   const lag = currentBlock - fromBlock;
   if (LAG_ALERT_BLOCKS > 0 && lag > LAG_ALERT_BLOCKS) {
-    console.warn(`⚠️  Chain ${chainId} en retard de ${lag} blocs (pointeur ${fromBlock}, tête ${currentBlock})`);
+    console.warn(`⚠️  Chain ${chainId} is ${lag} blocks behind (pointer ${fromBlock}, head ${currentBlock})`);
     if (Date.now() - (lastLagAlert.get(chainId) ?? 0) > LAG_ALERT_COOLDOWN_MS) {
       lastLagAlert.set(chainId, Date.now());
       await sendTelegramMessage(
         chatId,
-        `⚠️ <b>Tracker en retard</b>\nChain <b>${chainId}</b> : ${lag} blocs de retard\nPointeur ${fromBlock} / tête ${currentBlock}`
+        `⚠️ <b>Tracker lagging</b>\nChain <b>${chainId}</b>: ${lag} blocks behind\nPointer ${fromBlock} / head ${currentBlock}`
       );
     }
   }
 
-  // Scan par plages. Une plage en échec est rescannée au tick suivant
-  // (les events déjà alertés sont filtrés par seenKeys).
+  // Scan range by range. A failed range is rescanned on the next tick
+  // (events already alerted are filtered out by seenKeys).
   const logs = [];
   let lastGoodBlock = fromBlock - 1;
   for (let chunkFrom = fromBlock; chunkFrom <= toBlock; chunkFrom += blockRange) {
@@ -140,8 +140,8 @@ async function tickChain(chainId, group) {
       lastGoodBlock = chunkTo;
     } catch (err) {
       console.error(
-        `❌ Chain ${chainId} — scan interrompu aux blocs ${chunkFrom}-${chunkTo} : ${err.message}. ` +
-        `Pointeur figé à ${lastGoodBlock + 1}, reprise au prochain tick.`
+        `❌ Chain ${chainId} — scan stopped at blocks ${chunkFrom}-${chunkTo}: ${err.message}. ` +
+        `Pointer held at ${lastGoodBlock + 1}, retrying next tick.`
       );
       break;
     }
@@ -166,27 +166,27 @@ async function tickChain(chainId, group) {
     events.push(ev);
   }
 
-  // Envoi dans l'ordre chronologique
+  // Send in chronological order
   events.sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
   for (const ev of events) await sendTelegramMessage(chatId, formatTelegramMessage(ev));
 
   if (lastGoodBlock < fromBlock) {
-    console.warn(`⚠️  Chain ${chainId}: aucun bloc scanné ce tick, pointeur maintenu à ${fromBlock}`);
+    console.warn(`⚠️  Chain ${chainId}: no block scanned this tick, pointer held at ${fromBlock}`);
     return;
   }
 
   chainPointers.set(chainId, lastGoodBlock + 1);
   savePointers();
   console.log(
-    `🔎 Chain ${chainId}: blocs ${fromBlock}→${lastGoodBlock} (${lastGoodBlock - fromBlock + 1} blocs), events=${events.length}`
+    `🔎 Chain ${chainId}: blocks ${fromBlock}→${lastGoodBlock} (${lastGoodBlock - fromBlock + 1} blocks), events=${events.length}`
   );
 }
 
-// -------- Boucle principale --------
+// -------- Main loop --------
 
 async function tickAllChains() {
   if (tickRunning) {
-    console.log("⏭️ Tick précédent encore en cours, on passe.");
+    console.log("⏭️ Previous tick still running, skipping.");
     return;
   }
   tickRunning = true;
@@ -196,7 +196,7 @@ async function tickAllChains() {
     await Promise.all(
       chains.map(([chainId, group], index) =>
         sleep(index * staggerMs).then(() =>
-          tickChain(chainId, group).catch((err) => console.error(`❌ Erreur sur la chain ${chainId}:`, err))
+          tickChain(chainId, group).catch((err) => console.error(`❌ Error on chain ${chainId}:`, err))
         )
       )
     );
@@ -205,7 +205,7 @@ async function tickAllChains() {
   }
 }
 
-// -------- Persistance des pointeurs --------
+// -------- Pointer persistence --------
 
 function loadPointers() {
   try {
@@ -218,7 +218,7 @@ function loadPointers() {
     }
     return out;
   } catch (err) {
-    if (err.code !== "ENOENT") console.error(`❌ Lecture de ${POINTERS_FILE} impossible : ${err.message}`);
+    if (err.code !== "ENOENT") console.error(`❌ Cannot read ${POINTERS_FILE}: ${err.message}`);
     return new Map();
   }
 }
@@ -227,13 +227,13 @@ function savePointers() {
   try {
     const tmp = `${POINTERS_FILE}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(chainPointers), null, 2));
-    fs.renameSync(tmp, POINTERS_FILE); // écriture atomique
+    fs.renameSync(tmp, POINTERS_FILE); // atomic write
   } catch (err) {
-    console.error(`❌ Écriture de ${POINTERS_FILE} impossible : ${err.message}`);
+    console.error(`❌ Cannot write ${POINTERS_FILE}: ${err.message}`);
   }
 }
 
-// -------- Initialisation --------
+// -------- Initialization --------
 
 async function initializePointers() {
   const saved = loadPointers();
@@ -241,29 +241,29 @@ async function initializePointers() {
   for (const chainId of VAULTS_BY_CHAIN.keys()) {
     const block = await getCurrentBlock(chainId);
     if (!block) {
-      console.error(`❌ Bloc courant indisponible (chain ${chainId}) — nouvel essai au prochain tick`);
+      console.error(`❌ Current block unavailable (chain ${chainId}) — retrying next tick`);
       continue;
     }
 
     const savedPointer = saved.get(chainId);
     if (!savedPointer) {
       chainPointers.set(chainId, block);
-      console.log(`📦 Chain ${chainId} — pas de pointeur sauvegardé, démarrage à la tête : ${block}`);
+      console.log(`📦 Chain ${chainId} — no saved pointer, starting at head: ${block}`);
     } else if (savedPointer > block) {
       chainPointers.set(chainId, block);
-      console.warn(`⚠️  Chain ${chainId} — pointeur sauvegardé (${savedPointer}) au-delà de la tête (${block}), recalé`);
+      console.warn(`⚠️  Chain ${chainId} — saved pointer (${savedPointer}) is past the head (${block}), reset`);
     } else if (block - savedPointer > MAX_CATCHUP_BLOCKS) {
       const clamped = block - MAX_CATCHUP_BLOCKS;
       chainPointers.set(chainId, clamped);
       const skipped = clamped - savedPointer;
-      console.warn(`⚠️  Chain ${chainId} — arrêt trop long, reprise à ${clamped} (${skipped} blocs NON scannés)`);
+      console.warn(`⚠️  Chain ${chainId} — downtime too long, resuming at ${clamped} (${skipped} blocks NOT scanned)`);
       await sendTelegramMessage(
         chatId,
-        `⚠️ <b>Trou de scan au démarrage</b>\nChain <b>${chainId}</b> : ${skipped} blocs non scannés (${savedPointer} → ${clamped})\nÀ vérifier manuellement.`
+        `⚠️ <b>Scan gap at startup</b>\nChain <b>${chainId}</b>: ${skipped} blocks not scanned (${savedPointer} → ${clamped})\nCheck manually.`
       );
     } else {
       chainPointers.set(chainId, savedPointer);
-      console.log(`📦 Chain ${chainId} — reprise au bloc ${savedPointer} (${block - savedPointer} blocs à rattraper)`);
+      console.log(`📦 Chain ${chainId} — resuming at block ${savedPointer} (${block - savedPointer} blocks to catch up)`);
     }
   }
   savePointers();
@@ -273,20 +273,20 @@ function logRpcSetup() {
   for (const [chainId, group] of VAULTS_BY_CHAIN) {
     const urls = getRpcUrls(chainId).map(redactUrl).join(" → ");
     console.log(
-      `🔌 Chain ${chainId} (${CHAINS[chainId]?.name ?? "?"}) : ${group.addresses.length} vault(s), ` +
-      `plage ${getLogsBlockRange(chainId)} blocs, RPC ${urls}`
+      `🔌 Chain ${chainId} (${CHAINS[chainId]?.name ?? "?"}): ${group.addresses.length} vault(s), ` +
+      `range ${getLogsBlockRange(chainId)} blocks, RPC ${urls}`
     );
   }
   const legacy = Object.keys(process.env).filter((k) => /^ALCHEMY_.*_RPC_URL$/.test(k));
   if (legacy.length) {
-    console.warn(`⚠️  Variables ignorées (remplacées par RPC_URL_<chainId>) : ${legacy.join(", ")}`);
+    console.warn(`⚠️  Ignored variables (replaced by RPC_URL_<chainId>): ${legacy.join(", ")}`);
   }
 }
 
 export async function startVaultsTracker() {
   console.log(
-    `🚀 gami-vaults-tracker-bot démarré. Check toutes les ${CHECK_INTERVAL_SECONDS}s, ` +
-    `max ${MAX_CHUNKS_PER_TICK} plages eth_getLogs/tick, pointeurs dans ${POINTERS_FILE}.`
+    `🚀 gami-vaults-tracker-bot started. Checking every ${CHECK_INTERVAL_SECONDS}s, ` +
+    `max ${MAX_CHUNKS_PER_TICK} eth_getLogs ranges/tick, pointers in ${POINTERS_FILE}.`
   );
   logRpcSetup();
   await initializePointers();

@@ -1,4 +1,4 @@
-// bot/telegramBot.js — Réception des commandes Telegram (long polling getUpdates).
+// bot/telegramBot.js — Receives Telegram commands (getUpdates long polling).
 
 import { telegramApi } from "../telegram.js";
 import { loadVaultEntries } from "../vaultsConfig.js";
@@ -7,7 +7,7 @@ import { buildVaultEntry } from "../lib/vaultBuilder.js";
 import { createGithubClient } from "../lib/github.js";
 import { createCommandHandler } from "./commands.js";
 
-// Ignore les commandes envoyées pendant que le bot était éteint
+// Ignore commands sent while the bot was down
 const MAX_MESSAGE_AGE_S = 120;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -20,7 +20,7 @@ function parseIds(value) {
 
 export async function startTelegramCommands(env = process.env) {
   const adminIds = parseIds(env.ADMIN_USER_IDS);
-  // Render fournit RENDER_GIT_REPO_SLUG ("owner/repo") automatiquement
+  // Render provides RENDER_GIT_REPO_SLUG ("owner/repo") automatically
   const repo = env.GITHUB_REPO || env.RENDER_GIT_REPO_SLUG;
   const github = env.GITHUB_TOKEN && repo
     ? createGithubClient({ token: env.GITHUB_TOKEN, repo, ref: env.GITHUB_REF_BRANCH || "main" })
@@ -39,23 +39,23 @@ export async function startTelegramCommands(env = process.env) {
   });
 
   console.log(
-    `🤖 Commandes Telegram actives — /addvault ${github ? `→ ${repo}` : "désactivé (GITHUB_TOKEN ou dépôt manquant)"}, ` +
+    `🤖 Telegram commands enabled — /addvault ${github ? `→ ${repo}` : "disabled (GITHUB_TOKEN or repo missing)"}, ` +
     `${adminIds.size} admin(s)`
   );
 
   try {
     await telegramApi("setMyCommands", {
       commands: [
-        { command: "vaults", description: "Liste des vaults suivis" },
-        { command: "addvault", description: "Ajouter un vault (admins)" },
-        { command: "help", description: "Aide" }
+        { command: "vaults", description: "List tracked vaults" },
+        { command: "addvault", description: "Add a vault (admins)" },
+        { command: "help", description: "Help" }
       ]
     });
   } catch (err) {
-    console.warn(`⚠️  setMyCommands : ${err.message}`);
+    console.warn(`⚠️  setMyCommands: ${err.message}`);
   }
 
-  pollLoop(handler).catch((err) => console.error("❌ Boucle Telegram arrêtée :", err));
+  pollLoop(handler).catch((err) => console.error("❌ Telegram loop stopped:", err));
 }
 
 async function pollLoop(handler) {
@@ -69,9 +69,9 @@ async function pollLoop(handler) {
         { timeoutMs: 40_000 }
       );
     } catch (err) {
-      // 409 : une autre instance poll (chevauchement pendant un déploiement Render)
-      if (err.code === 409) console.warn("⚠️  getUpdates 409 : autre instance active, nouvel essai dans 15 s");
-      else console.warn(`⚠️  getUpdates : ${err.message}`);
+      // 409: another instance is polling (overlap during a Render deploy)
+      if (err.code === 409) console.warn("⚠️  getUpdates 409: another instance is active, retrying in 15 s");
+      else console.warn(`⚠️  getUpdates: ${err.message}`);
       await sleep(15_000);
       continue;
     }
@@ -83,7 +83,7 @@ async function pollLoop(handler) {
       try {
         await handler.handleUpdate(update);
       } catch (err) {
-        console.error("❌ Commande Telegram :", err.message);
+        console.error("❌ Telegram command:", err.message);
       }
     }
   }

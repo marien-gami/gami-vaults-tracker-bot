@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-// scripts/add-vault.js — Ajoute un vault à vaults.json en lisant ses infos on-chain.
+// scripts/add-vault.js — Adds a vault to vaults.json by reading its data on-chain.
 //
-// Usage :
+// Usage:
 //   npm run add-vault -- --name "Gami WBTC" --address 0x… --chain 1 --type erc7540
 //
-// Lu automatiquement on-chain (surchargeable par option) :
-//   erc4626 / erc7540 : asset() → adresse, symbole, décimales de l'asset ; symbole/décimales de la share
-//   midas-deposit     : --asset-address requis (token de paiement, ex. USDC)
-//   midas-redeem      : mToken() → share ; --asset-address requis (token de paiement)
+// Read on-chain automatically (can be overridden with options):
+//   erc4626 / erc7540 : asset() → asset address, symbol, decimals; share symbol/decimals
+//   midas-deposit     : --asset-address required (payment token, e.g. USDC)
+//   midas-redeem      : mToken() → share; --asset-address required (payment token)
 //
-// Options : --asset-address --asset-symbol --asset-decimals
-//           --share-address --share-symbol --share-decimals --dry-run
+// Options: --asset-address --asset-symbol --asset-decimals
+//          --share-address --share-symbol --share-decimals --dry-run
 
 import fs from "node:fs";
 import { parseArgs } from "node:util";
@@ -53,17 +53,17 @@ async function main() {
     { rpc: createRpcClient({ logger: { log() {}, warn() {} } }), entries }
   );
 
-  console.log(`✅ Vault prêt (${VAULT_TYPES[entry.type].label}) :\n${JSON.stringify(entry, null, 2)}`);
-  if (entry.type.startsWith("midas")) console.log("ℹ️  Midas : montants des events en base18 — géré automatiquement.");
+  console.log(`✅ Vault ready (${VAULT_TYPES[entry.type].label}):\n${JSON.stringify(entry, null, 2)}`);
+  if (entry.type.startsWith("midas")) console.log("ℹ️  Midas: event amounts are base18 — handled automatically.");
 
   if (opts["dry-run"]) {
-    console.log("(dry-run : vaults.json non modifié)");
+    console.log("(dry-run: vaults.json not modified)");
     return;
   }
   fs.writeFileSync(VAULTS_FILE, JSON.stringify([...entries, entry], null, 2) + "\n");
-  console.log(`💾 Ajouté à vaults.json (${entries.length + 1} vaults)`);
+  console.log(`💾 Added to vaults.json (${entries.length + 1} vaults)`);
 
-  // Sortie pour GitHub Actions (message de commit)
+  // Output for GitHub Actions (commit message)
   if (process.env.GITHUB_OUTPUT) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `summary=${entry.name} (${CHAINS[entry.chainId].name}, ${entry.type})\n`);
   }

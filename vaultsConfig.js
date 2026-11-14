@@ -1,25 +1,25 @@
-// vaultsConfig.js — Charge vaults.json, le valide, et le développe au format
-// attendu par le tracker (trackedTokens + trackedEventsMap).
+// vaultsConfig.js — Loads vaults.json, validates it, and expands it into the
+// format expected by the tracker (trackedTokens + trackedEventsMap).
 //
-// Pour ajouter un vault : GitHub Actions → "Add vault", ou `npm run add-vault`,
-// ou à la main dans vaults.json. Chaque entrée :
+// To add a vault: /addvault in Telegram, GitHub Actions → "Add vault",
+// `npm run add-vault`, or by hand in vaults.json. Each entry:
 //   {
 //     "name": "Gami WBTC",
-//     "address": "0x…",            // contrat qui émet les events
-//     "chainId": 1,                 // doit exister dans chains.js
-//     "type": "erc7540",            // une clé de VAULT_TYPES ci-dessous
+//     "address": "0x…",            // contract that emits the events
+//     "chainId": 1,                 // must exist in chains.js
+//     "type": "erc7540",            // a key of VAULT_TYPES below
 //     "asset": { "address": "0x…", "symbol": "WBTC", "decimals": 8 },
-//     "share": { "symbol": "gamiWBTC", "decimals": 18 }   // address = vault par défaut
+//     "share": { "symbol": "gamiWBTC", "decimals": 18 }   // address defaults to the vault
 //   }
-// Champs optionnels : "minAmount" dans asset/share, "whitelistedAddresses": [...]
+// Optional fields: "minAmount" in asset/share, "whitelistedAddresses": [...]
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHAINS } from "./chains.js";
 
-// ── Topics (keccak256 de la signature d'event) ───────────────────────────────
-// Trouver un topic0 : `cast sig-event "EventName(type1,…)"` ou onglet Events d'Etherscan.
+// ── Topics (keccak256 of the event signature) ────────────────────────────────
+// Find a topic0: `cast sig-event "EventName(type1,…)"` or the Events tab on Etherscan.
 
 export const TOPICS = {
   // Deposit(address indexed caller, address indexed owner, uint256 assets, uint256 shares)
@@ -40,15 +40,15 @@ export const TOPICS = {
   MIDAS_REDEEM_REQUEST: "0x55ba94d231fa70a45e82b0a1c6a60ef72e41bb2455385128ee5cf8d98c0c1c0e"
 };
 
-// ── Types de vault ───────────────────────────────────────────────────────────
-// tokens : index 0 = asset, index 1 = share (si needsShare)
+// ── Vault types ──────────────────────────────────────────────────────────────
+// tokens : index 0 = asset, index 1 = share (if needsShare)
 // events : topic0 → [action, callerTopicIndex, amountDataSlot, amountTokenIndex]
-// forceDecimals : Midas normalise TOUS les montants des events en base18,
-//   quelle que soit la décimale réelle du token (USDC 6 → émis en 18).
+// forceDecimals : Midas normalizes ALL event amounts to base18,
+//   whatever the token's real decimals (USDC 6 → emitted as 18).
 
 export const VAULT_TYPES = {
   erc4626: {
-    label: "ERC-4626 (Deposit / Withdraw instantanés — ex. Upshift)",
+    label: "ERC-4626 (instant Deposit / Withdraw — e.g. Upshift)",
     needsShare: true,
     events: {
       [TOPICS.ERC4626_DEPOSIT]: ["Deposit", 1, 0, 0],   // data[0] = assets
@@ -56,7 +56,7 @@ export const VAULT_TYPES = {
     }
   },
   erc7540: {
-    label: "ERC-7540 (Request Deposit / Request Withdraw — ex. Lagoon, T3tris)",
+    label: "ERC-7540 (Request Deposit / Request Withdraw — e.g. Lagoon, T3tris)",
     needsShare: true,
     events: {
       [TOPICS.ERC7540_DEPOSIT_REQUEST]: ["Request Deposit", 1, 1, 0],  // data[1] = assets
@@ -85,41 +85,41 @@ export const VAULT_TYPES = {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
-// Renvoie la liste des erreurs (vide si OK)
+// Returns the list of errors (empty if OK)
 export function validateVaultEntries(entries) {
   const errors = [];
-  if (!Array.isArray(entries)) return ["vaults.json doit contenir un tableau"];
+  if (!Array.isArray(entries)) return ["vaults.json must contain an array"];
   const seen = new Set();
   entries.forEach((v, i) => {
-    const where = `vault #${i} (${v?.name ?? "sans nom"})`;
-    if (!v || typeof v !== "object") return errors.push(`${where} : entrée invalide`);
-    if (!v.name || typeof v.name !== "string") errors.push(`${where} : "name" manquant`);
-    if (!ADDRESS_RE.test(v.address || "")) errors.push(`${where} : "address" invalide`);
-    if (!CHAINS[v.chainId]) errors.push(`${where} : chainId ${v.chainId} absent de chains.js`);
+    const where = `vault #${i} (${v?.name ?? "unnamed"})`;
+    if (!v || typeof v !== "object") return errors.push(`${where}: invalid entry`);
+    if (!v.name || typeof v.name !== "string") errors.push(`${where}: missing "name"`);
+    if (!ADDRESS_RE.test(v.address || "")) errors.push(`${where}: invalid "address"`);
+    if (!CHAINS[v.chainId]) errors.push(`${where}: chainId ${v.chainId} not in chains.js`);
     const type = VAULT_TYPES[v.type];
     if (!type) {
-      errors.push(`${where} : type "${v.type}" inconnu (${Object.keys(VAULT_TYPES).join(", ")})`);
+      errors.push(`${where}: unknown type "${v.type}" (${Object.keys(VAULT_TYPES).join(", ")})`);
     }
     const tokens = [["asset", v.asset]];
     if (type?.needsShare) tokens.push(["share", v.share]);
     for (const [key, t] of tokens) {
-      if (!t || typeof t !== "object") { errors.push(`${where} : "${key}" manquant`); continue; }
-      if (!t.symbol) errors.push(`${where} : ${key}.symbol manquant`);
+      if (!t || typeof t !== "object") { errors.push(`${where}: missing "${key}"`); continue; }
+      if (!t.symbol) errors.push(`${where}: missing ${key}.symbol`);
       if (!Number.isInteger(t.decimals) || t.decimals < 0 || t.decimals > 36) {
-        errors.push(`${where} : ${key}.decimals invalide`);
+        errors.push(`${where}: invalid ${key}.decimals`);
       }
       if (t.address !== undefined && !ADDRESS_RE.test(t.address)) {
-        errors.push(`${where} : ${key}.address invalide`);
+        errors.push(`${where}: invalid ${key}.address`);
       }
     }
     const key = `${v.chainId}:${(v.address || "").toLowerCase()}`;
-    if (seen.has(key)) errors.push(`${where} : doublon (même adresse sur la même chain)`);
+    if (seen.has(key)) errors.push(`${where}: duplicate (same address on the same chain)`);
     seen.add(key);
   });
   return errors;
 }
 
-// Entrée vaults.json → objet vault attendu par le tracker
+// vaults.json entry → vault object expected by the tracker
 export function expandVault(v) {
   const type = VAULT_TYPES[v.type];
   const toToken = (t, fallbackAddress) => ({
@@ -158,7 +158,7 @@ function loadVaults() {
   const entries = loadVaultEntries();
   const errors = validateVaultEntries(entries);
   if (errors.length) {
-    throw new Error(`vaults.json invalide :\n  - ${errors.join("\n  - ")}`);
+    throw new Error(`Invalid vaults.json:\n  - ${errors.join("\n  - ")}`);
   }
   return entries.map(expandVault);
 }

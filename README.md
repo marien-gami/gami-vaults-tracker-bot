@@ -1,63 +1,64 @@
 # gami-vaults-tracker-bot
 
-Surveille les dépôts et retraits sur les vaults Gami (toutes chains) et les poste sur Telegram.
+Watches deposits and withdrawals on Gami vaults (all chains) and posts them to Telegram.
 
-## Ajouter un vault
+## Adding a vault
 
-**Depuis Telegram (le plus rapide)** : dans le groupe du bot,
+**From Telegram (fastest)**: in the bot's group,
 
 ```
-/addvault <adresse> <chain> <type> <nom>
+/addvault <address> <chain> <type> <name>
 /addvault 0xabc… eth 7540 Gami WBTC
 /addvault 0xdef… eth midas-redeem asset=0xA0b8…eB48 Gami Midas X (Redeem)
 ```
 
-Le bot lit le contrat on-chain et affiche un aperçu (asset, share, décimales).
-Après **✅ Confirmer**, il déclenche le workflow GitHub *Add vault* en commit direct
-sur `main` : Render redéploie et le vault est suivi ~2-3 min plus tard. Le bot
-confirme dans le même message (ou donne le lien des logs en cas d'échec).
+The bot reads the contract on-chain and shows a preview (asset, share, decimals).
+After **✅ Confirm**, it triggers the *Add vault* GitHub workflow as a direct commit
+to `main`: Render redeploys and the vault is tracked ~2-3 min later. The bot
+confirms in the same message (or links to the logs if something fails).
 
-Réservé aux user IDs listés dans `ADMIN_USER_IDS` ; nécessite `GITHUB_TOKEN`
-(voir [`.env.example`](.env.example)). `/vaults` liste les vaults suivis, `/help` l'aide.
+Restricted to the user IDs listed in `ADMIN_USER_IDS`; requires `GITHUB_TOKEN`
+(see [`.env.example`](.env.example)). `/vaults` lists tracked vaults, `/help` shows help.
 
-**Depuis GitHub** : onglet **Actions** → **Add vault** → **Run workflow**.
-Renseigner le nom, l'adresse, la chain et le type. Le symbole et les décimales sont lus
-on-chain, la config est validée, les tests tournent, puis une Pull Request est ouverte :
-la merger redéploie le bot.
+**From GitHub**: **Actions** tab → **Add vault** → **Run workflow**.
+Fill in the name, address, chain and type. Symbol and decimals are read on-chain,
+the config is validated, tests run, then a Pull Request is opened: merging it
+redeploys the bot.
 
-> Première utilisation : activer *Settings → Actions → General → "Allow GitHub Actions
+> First use: enable *Settings → Actions → General → "Allow GitHub Actions
 > to create and approve pull requests"*.
 
-**En local** :
+**Locally**:
 
 ```bash
 npm run add-vault -- --name "Gami WBTC" --address 0x… --chain 1 --type erc7540
 ```
 
-| Type | Pour | Events suivis |
+| Type | For | Tracked events |
 |---|---|---|
 | `erc7540` | Lagoon, T3tris | Request Deposit / Request Withdraw |
 | `erc4626` | Upshift | Deposit / Withdraw |
-| `midas-deposit` | Midas DepositVault (`--asset-address` = token de paiement) | Deposit / Request Deposit |
-| `midas-redeem` | Midas RedemptionVault (`--asset-address` = token de paiement) | Redeem / Request Withdraw |
+| `midas-deposit` | Midas DepositVault (`--asset-address` = payment token) | Deposit / Request Deposit |
+| `midas-redeem` | Midas RedemptionVault (`--asset-address` = payment token) | Redeem / Request Withdraw |
 
-La liste des vaults vit dans [`vaults.json`](vaults.json) (modifiable à la main aussi).
+The vault list lives in [`vaults.json`](vaults.json) (can also be edited by hand).
 
-## Ajouter une chain
+## Adding a chain
 
-Ajouter une entrée dans [`chains.js`](chains.js) avec un ou plusieurs RPC publics
-(vérifier qu'ils acceptent `eth_getLogs` sur la plage choisie), puis l'ajouter aux
-choix du workflow `.github/workflows/add-vault.yml`.
+Add an entry to [`chains.js`](chains.js) with one or more public RPCs
+(check that they accept `eth_getLogs` over the chosen range), then add it to the
+choices of the `.github/workflows/add-vault.yml` workflow and to the aliases in
+`lib/vaultBuilder.js`.
 
 ## Configuration
 
-Voir [`.env.example`](.env.example). Seuls `BOT_TOKEN` et `CHAT_ID` sont obligatoires :
-chaque chain a des RPC publics par défaut, avec repli automatique de l'un à l'autre.
+See [`.env.example`](.env.example). Only `BOT_TOKEN` and `CHAT_ID` are required:
+every chain has default public RPCs, with automatic failover between them.
 
-## Commandes
+## Commands
 
 ```bash
-npm start            # lance le bot
-npm test             # tests unitaires (sans réseau)
-npm run check-rpcs   # teste chaque RPC en live et rejoue les derniers events (sans Telegram)
+npm start            # run the bot
+npm test             # unit tests (no network)
+npm run check-rpcs   # live-test every RPC and replay the latest events (no Telegram)
 ```

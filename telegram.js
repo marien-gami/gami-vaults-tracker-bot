@@ -8,7 +8,7 @@ if (!TOKEN) {
   throw new Error("⚠️ BOT_TOKEN missing in .env");
 }
 
-// Appel brut à l'API Bot. Renvoie `result` ou lève une erreur (avec .code = error_code).
+// Raw Bot API call. Returns `result` or throws (with .code = error_code).
 export async function telegramApi(method, body = {}, { timeoutMs = 15_000 } = {}) {
   const res = await fetch(`${API_URL}/${method}`, {
     method: "POST",
@@ -18,7 +18,7 @@ export async function telegramApi(method, body = {}, { timeoutMs = 15_000 } = {}
   });
   const data = await res.json();
   if (!data.ok) {
-    const err = new Error(`Telegram ${method} : ${data.error_code} ${data.description}`);
+    const err = new Error(`Telegram ${method}: ${data.error_code} ${data.description}`);
     err.code = data.error_code;
     throw err;
   }

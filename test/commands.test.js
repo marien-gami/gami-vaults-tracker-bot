@@ -34,13 +34,13 @@ function setup({ github = null, buildEntry = async () => ENTRY } = {}) {
 const msg = (text, { from = ADMIN, chat = CHAT, type = "supergroup" } = {}) =>
   ({ message: { text, from: { id: from }, chat: { id: chat, type }, date: Math.floor(Date.now() / 1000) } });
 
-test("les options du workflow correspondent aux libellés du bot", () => {
+test("workflow options match the bot's labels", () => {
   const yml = fs.readFileSync(new URL("../.github/workflows/add-vault.yml", import.meta.url), "utf8");
-  for (const id of Object.keys(CHAINS)) assert.ok(yml.includes(`"${chainOptionLabel(id)}"`), `chain ${id} absente du workflow`);
-  for (const label of Object.values(TYPE_OPTION_LABELS)) assert.ok(yml.includes(`"${label}"`), `type "${label}" absent du workflow`);
+  for (const id of Object.keys(CHAINS)) assert.ok(yml.includes(`"${chainOptionLabel(id)}"`), `chain ${id} missing from the workflow`);
+  for (const label of Object.values(TYPE_OPTION_LABELS)) assert.ok(yml.includes(`"${label}"`), `type "${label}" missing from the workflow`);
 });
 
-test("résolution souple des chains et types", () => {
+test("lenient chain and type resolution", () => {
   assert.equal(resolveChainId("eth"), 1);
   assert.equal(resolveChainId("Base"), 8453);
   assert.equal(resolveChainId("43114 - Avalanche"), 43114);
@@ -51,67 +51,67 @@ test("résolution souple des chains et types", () => {
   assert.equal(resolveType("foo"), null);
 });
 
-test("decodeString : string ABI et bytes32", () => {
+test("decodeString: ABI string and bytes32", () => {
   const abi = "0x" + "20".padStart(64, "0") + "4".padStart(64, "0") + Buffer.from("USDC").toString("hex").padEnd(64, "0");
   assert.equal(decodeString(abi), "USDC");
   assert.equal(decodeString("0x" + Buffer.from("MKR").toString("hex").padEnd(64, "0")), "MKR");
 });
 
-test("parseAddVaultArgs : nom avec espaces + options n'importe où", () => {
+test("parseAddVaultArgs: name with spaces + options anywhere", () => {
   assert.deepEqual(
     parseAddVaultArgs("/addvault@GamiBot 0xabc eth midas-redeem asset=0xusdc Gami turtle PST symbol=tPST"),
     { address: "0xabc", chain: "eth", type: "midas-redeem", name: "Gami turtle PST", assetAddress: "0xusdc", shareSymbol: "tPST" }
   );
 });
 
-test("workflowInputs : valeurs exactes du workflow, commit direct", () => {
+test("workflowInputs: exact workflow values, direct commit", () => {
   const i = workflowInputs(ENTRY, { requestId: "tg-1" });
   assert.equal(i.chain, "1 - Ethereum");
   assert.equal(i.type, TYPE_OPTION_LABELS.erc7540);
   assert.equal(i.direct_commit, "true");
-  assert.equal(i.asset_address, "", "asset() relu on-chain pour erc7540");
+  assert.equal(i.asset_address, "", "asset() is re-read on-chain for erc7540");
   assert.equal(workflowInputs({ ...ENTRY, type: "midas-deposit" }, { requestId: "x" }).asset_address, ENTRY.asset.address);
 });
 
-test("/vaults liste par chain ; /help répond", async () => {
+test("/vaults lists by chain; /help answers", async () => {
   const { handler, calls } = setup();
   await handler.handleUpdate(msg("/vaults"));
-  assert.match(calls[0].body.text, /1 vaults suivis[\s\S]*Ethereum[\s\S]*Gami Test/);
+  assert.match(calls[0].body.text, /1 vaults tracked[\s\S]*Ethereum[\s\S]*Gami Test/);
   await handler.handleUpdate(msg("/help@GamiBot", { from: 7 }));
   assert.match(calls[1].body.text, /addvault/);
-  assert.match(formatVaultList([{ ...ENTRY, name: "<b>x" }]), /&lt;b&gt;x/, "HTML échappé");
+  assert.match(formatVaultList([{ ...ENTRY, name: "<b>x" }]), /&lt;b&gt;x/, "HTML escaped");
 });
 
-test("ignore les chats non autorisés", async () => {
+test("ignores unauthorized chats", async () => {
   const { handler, calls } = setup();
   await handler.handleUpdate(msg("/vaults", { chat: 999 }));
   await handler.handleUpdate(msg("/vaults", { chat: 555, from: 7, type: "private" }));
   assert.equal(calls.length, 0);
-  // un admin en privé est autorisé
+  // an admin in a private chat is allowed
   await handler.handleUpdate(msg("/vaults", { chat: ADMIN, type: "private" }));
   assert.equal(calls.length, 1);
 });
 
-test("/addvault refusé aux non-admins (avec leur user ID)", async () => {
+test("/addvault refused to non-admins (showing their user ID)", async () => {
   const { handler, calls } = setup();
   await handler.handleUpdate(msg("/addvault 0xabc eth 7540 X", { from: 7 }));
-  assert.match(calls[0].body.text, /Réservé aux admins[\s\S]*<code>7<\/code>/);
+  assert.match(calls[0].body.text, /Admins only[\s\S]*<code>7<\/code>/);
 });
 
-test("/addvault sans GITHUB_TOKEN → message explicite", async () => {
+test("/addvault without GITHUB_TOKEN → explicit message", async () => {
   const { handler, calls } = setup({ github: null });
   await handler.handleUpdate(msg("/addvault 0xabc eth 7540 X"));
   assert.match(calls[0].body.text, /GITHUB_TOKEN/);
 });
 
-test("/addvault : erreur on-chain affichée proprement", async () => {
-  const { handler, calls } = setup({ github: {}, buildEntry: async () => { throw new VaultInputError("aucun contrat à 0xabc sur Base"); } });
+test("/addvault: on-chain error shown cleanly", async () => {
+  const { handler, calls } = setup({ github: {}, buildEntry: async () => { throw new VaultInputError("no contract at 0xabc on Base"); } });
   await handler.handleUpdate(msg("/addvault 0xabc base 7540 X"));
   assert.equal(calls.at(-1).method, "editMessageText");
-  assert.match(calls.at(-1).body.text, /❌ aucun contrat/);
+  assert.match(calls.at(-1).body.text, /❌ no contract/);
 });
 
-test("/addvault : aperçu → seul l'auteur confirme → workflow déclenché → résultat", async () => {
+test("/addvault: preview → only the author confirms → workflow triggered → result", async () => {
   let dispatched;
   let resolveRun;
   const github = {
@@ -123,41 +123,41 @@ test("/addvault : aperçu → seul l'auteur confirme → workflow déclenché �
   await handler.handleUpdate(msg("/addvault 0xabc eth 7540 Gami Test"));
   const preview = calls.at(-1);
   assert.equal(preview.method, "editMessageText");
-  assert.match(preview.body.text, /Ajouter ce vault[\s\S]*USDC<\/b> \(6 déc\.\)[\s\S]*gamiTest/);
+  assert.match(preview.body.text, /Add this vault[\s\S]*USDC<\/b> \(6 dec\.\)[\s\S]*gamiTest/);
   const okData = preview.body.reply_markup.inline_keyboard[0][0].callback_data;
   const cbMessage = { chat: { id: CHAT }, message_id: 100 };
 
-  // un autre membre ne peut pas confirmer
+  // another member cannot confirm
   await handler.handleUpdate({ callback_query: { id: "c1", data: okData, from: { id: 7 }, message: cbMessage } });
   assert.equal(dispatched, undefined);
-  assert.match(calls.at(-1).body.text, /Seul l'auteur/);
+  assert.match(calls.at(-1).body.text, /Only the author/);
 
-  // l'auteur confirme
+  // the author confirms
   await handler.handleUpdate({ callback_query: { id: "c2", data: okData, from: { id: ADMIN }, message: cbMessage } });
   assert.equal(dispatched.chain, "1 - Ethereum");
   assert.equal(dispatched.direct_commit, "true");
   assert.match(dispatched.request_id, /^tg-[0-9a-f]+$/);
-  assert.match(calls.at(-1).body.text, /en cours/);
+  assert.match(calls.at(-1).body.text, /workflow running/);
 
-  // un 2e clic ne relance rien (demande consommée)
+  // a second click does nothing (request consumed)
   await handler.handleUpdate({ callback_query: { id: "c3", data: okData, from: { id: ADMIN }, message: cbMessage } });
-  assert.match(calls.at(-1).body.text, /expirée/);
+  assert.match(calls.at(-1).body.text, /expired/);
 
   resolveRun({ status: "success", url: "https://github.com/x" });
   await new Promise((r) => setImmediate(r));
-  assert.match(calls.at(-1).body.text, /✅ <b>Gami Test<\/b> ajouté/);
+  assert.match(calls.at(-1).body.text, /✅ <b>Gami Test<\/b> added/);
 });
 
-test("/addvault : annulation", async () => {
-  const github = { dispatchAddVault: async () => assert.fail("ne doit pas être appelé") };
+test("/addvault: cancel", async () => {
+  const github = { dispatchAddVault: async () => assert.fail("must not be called") };
   const { handler, calls } = setup({ github });
   await handler.handleUpdate(msg("/addvault 0xabc eth 7540 Gami Test"));
   const noData = calls.at(-1).body.reply_markup.inline_keyboard[0][1].callback_data;
   await handler.handleUpdate({ callback_query: { id: "c", data: noData, from: { id: ADMIN }, message: { chat: { id: CHAT }, message_id: 100 } } });
-  assert.match(calls.at(-1).body.text, /annulé/);
+  assert.match(calls.at(-1).body.text, /cancelled/);
 });
 
-test("github client : dispatch puis suivi du run par request_id", async () => {
+test("github client: dispatch then follow the run by request_id", async () => {
   const reqs = [];
   let polls = 0;
   const fetchImpl = async (url, init) => {
@@ -165,7 +165,7 @@ test("github client : dispatch puis suivi du run par request_id", async () => {
     if (init.method === "POST") return { status: 204, ok: true, json: async () => ({}) };
     polls++;
     const run = { display_title: "Add vault: X tg-abc", status: polls < 2 ? "in_progress" : "completed", conclusion: "success", html_url: "https://gh/run/1" };
-    return { status: 200, ok: true, json: async () => ({ workflow_runs: [{ display_title: "autre", status: "completed" }, run] }) };
+    return { status: 200, ok: true, json: async () => ({ workflow_runs: [{ display_title: "other", status: "completed" }, run] }) };
   };
   const gh = createGithubClient({ token: "t", repo: "o/r", fetchImpl });
   await gh.dispatchAddVault({ name: "X" });
@@ -176,7 +176,7 @@ test("github client : dispatch puis suivi du run par request_id", async () => {
   assert.deepEqual(res, { status: "success", url: "https://gh/run/1" });
 });
 
-test("github client : erreur HTTP remontée avec le message GitHub", async () => {
+test("github client: HTTP error surfaced with GitHub's message", async () => {
   const fetchImpl = async () => ({ status: 403, ok: false, json: async () => ({ message: "Resource not accessible by personal access token" }) });
   const gh = createGithubClient({ token: "t", repo: "o/r", fetchImpl });
   await assert.rejects(gh.dispatchAddVault({}), /403 Resource not accessible/);
