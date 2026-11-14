@@ -1,8 +1,13 @@
 name: Add vault
+run-name: "Add vault: ${{ inputs.name }} ${{ inputs.request_id }}"
 
-# Ajoute un vault depuis l'onglet Actions de GitHub → "Add vault" → "Run workflow".
+# Ajoute un vault depuis l'onglet Actions de GitHub → "Add vault" → "Run workflow",
+# ou depuis Telegram avec /addvault (le bot déclenche ce workflow via l'API).
 # Symbole et décimales sont lus on-chain ; le workflow valide, lance les tests
 # et ouvre une Pull Request (ou pousse directement sur main si demandé).
+#
+# ⚠️ Les options "chain" et "type" doivent rester identiques à
+# chainOptionLabel / TYPE_OPTION_LABELS (lib/vaultBuilder.js) — vérifié par npm test.
 
 on:
   workflow_dispatch:
@@ -43,10 +48,18 @@ on:
         description: "Pousser directement sur main (sinon : ouvre une Pull Request)"
         type: boolean
         default: false
+      request_id:
+        description: "Interne (bot Telegram) — laisser vide"
+        required: false
 
 permissions:
   contents: write
   pull-requests: write
+
+# Deux ajouts simultanés passent l'un après l'autre (évite les conflits sur vaults.json)
+concurrency:
+  group: add-vault
+  cancel-in-progress: false
 
 jobs:
   add-vault:
@@ -88,6 +101,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ "$DIRECT" = "true" ]; then
             git commit -am "add: vault $SUMMARY"
+            git pull --rebase origin main
             git push origin HEAD:main
             echo "✅ Poussé sur main : $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
           else

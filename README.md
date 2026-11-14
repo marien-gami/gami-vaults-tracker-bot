@@ -4,7 +4,23 @@ Surveille les dépôts et retraits sur les vaults Gami (toutes chains) et les po
 
 ## Ajouter un vault
 
-**Depuis GitHub (recommandé)** : onglet **Actions** → **Add vault** → **Run workflow**.
+**Depuis Telegram (le plus rapide)** : dans le groupe du bot,
+
+```
+/addvault <adresse> <chain> <type> <nom>
+/addvault 0xabc… eth 7540 Gami WBTC
+/addvault 0xdef… eth midas-redeem asset=0xA0b8…eB48 Gami Midas X (Redeem)
+```
+
+Le bot lit le contrat on-chain et affiche un aperçu (asset, share, décimales).
+Après **✅ Confirmer**, il déclenche le workflow GitHub *Add vault* en commit direct
+sur `main` : Render redéploie et le vault est suivi ~2-3 min plus tard. Le bot
+confirme dans le même message (ou donne le lien des logs en cas d'échec).
+
+Réservé aux user IDs listés dans `ADMIN_USER_IDS` ; nécessite `GITHUB_TOKEN`
+(voir [`.env.example`](.env.example)). `/vaults` liste les vaults suivis, `/help` l'aide.
+
+**Depuis GitHub** : onglet **Actions** → **Add vault** → **Run workflow**.
 Renseigner le nom, l'adresse, la chain et le type. Le symbole et les décimales sont lus
 on-chain, la config est validée, les tests tournent, puis une Pull Request est ouverte :
 la merger redéploie le bot.
