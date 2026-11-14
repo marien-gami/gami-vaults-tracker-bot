@@ -1,4 +1,4 @@
-// alerts/events.js — Décodage des logs de vault (fonctions pures, sans I/O).
+// alerts/events.js — Vault log decoding (pure functions, no I/O).
 
 export function trimZeros(s) {
   if (s.indexOf(".") === -1) return s;
@@ -16,7 +16,7 @@ export function getEmojiForAction(actionType) {
   return "⚪";
 }
 
-// Décode une adresse EVM depuis un topic 32 bytes (prend les 20 derniers bytes)
+// Decodes an EVM address from a 32-byte topic (takes the last 20 bytes)
 export function decodeAddressFromTopic(topic) {
   if (!topic || typeof topic !== "string") return "";
   const hex = topic.replace("0x", "");
@@ -24,7 +24,7 @@ export function decodeAddressFromTopic(topic) {
   return ("0x" + hex.slice(-40)).toLowerCase();
 }
 
-// Décode un uint256 depuis les données ABI-encodées à un slot donné (0-based)
+// Decodes a uint256 from ABI-encoded data at a given slot (0-based)
 export function decodeUint256FromData(data, slotIndex = 0) {
   if (!data || typeof data !== "string") return null;
   const hex = data.replace("0x", "");
@@ -37,18 +37,18 @@ export function decodeUint256FromData(data, slotIndex = 0) {
   }
 }
 
-// Formate un BigInt en décimal exact (pas de perte de précision via Number)
+// Formats a BigInt as an exact decimal string (no precision loss through Number)
 export function formatUnits(raw, decimals, maxFraction = 8) {
   const neg = raw < 0n;
   const abs = neg ? -raw : raw;
   const base = 10n ** BigInt(decimals);
   const intPart = abs / base;
-  let frac = (abs % base).toString().padStart(decimals, "0").slice(0, Math.min(decimals, maxFraction));
+  const frac = (abs % base).toString().padStart(decimals, "0").slice(0, Math.min(decimals, maxFraction));
   const s = trimZeros(frac ? `${intPart}.${frac}` : `${intPart}`);
   return (neg ? "-" : "") + s;
 }
 
-// Construit la map topic0 → config pour un vault (clés en minuscules)
+// Builds the topic0 → config map for a vault (lowercase keys)
 export function buildTopicMap(vault) {
   const map = new Map();
   for (const [topic, config] of Object.entries(vault.trackedEventsMap || {})) {
@@ -57,8 +57,8 @@ export function buildTopicMap(vault) {
   return map;
 }
 
-// Transforme un log brut en event affichable, ou null s'il faut l'ignorer.
-// `from` peut venir des topics (cas nominal) ou de txFrom (si non indexé).
+// Turns a raw log into a displayable event, or null if it must be ignored.
+// `from` comes from the topics (nominal case) or from txFrom (if not indexed).
 export function processLog({ vault, log, chainId, blockTimestamp, txFrom = null }) {
   if ((log.address || "").toLowerCase() !== vault.vaultAddress.toLowerCase()) return null;
 

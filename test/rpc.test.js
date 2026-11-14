@@ -4,7 +4,7 @@ import { createRpcClient, getRpcUrls, getLogsBlockRange, chunk, redactUrl, RpcFa
 
 const quiet = { log() {}, warn() {} };
 
-// Faux fetch : handler(url, body) → { status, json }
+// Fake fetch: handler(url, body) → { status, json }
 function fakeFetch(handler) {
   const calls = [];
   const impl = async (url, init) => {
@@ -16,7 +16,7 @@ function fakeFetch(handler) {
   return { impl, calls };
 }
 
-test("getRpcUrls : env en premier (liste à virgules), puis défauts, sans doublons", () => {
+test("getRpcUrls: env first (comma-separated list), then defaults, no duplicates", () => {
   const env = { RPC_URL_1: "https://a.example, https://ethereum-rpc.publicnode.com" };
   assert.deepEqual(getRpcUrls(1, env), [
     "https://a.example",
@@ -26,24 +26,24 @@ test("getRpcUrls : env en premier (liste à virgules), puis défauts, sans doubl
   assert.deepEqual(getRpcUrls(999, {}), []);
 });
 
-test("getLogsBlockRange : par chain > global > défaut chains.js", () => {
+test("getLogsBlockRange: per chain > global > chains.js default", () => {
   assert.equal(getLogsBlockRange(1, {}), 2000);
   assert.equal(getLogsBlockRange(1, { LOGS_BLOCK_RANGE: "50" }), 50);
   assert.equal(getLogsBlockRange(1, { LOGS_BLOCK_RANGE: "50", LOGS_BLOCK_RANGE_1: "7" }), 7);
   assert.equal(getLogsBlockRange(999, {}), 10);
 });
 
-test("chunk découpe en paquets", () => {
+test("chunk splits into batches", () => {
   assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
   assert.deepEqual(chunk([], 10), []);
 });
 
-test("redactUrl masque les clés d'API dans le chemin et la query", () => {
+test("redactUrl hides API keys in the path and query", () => {
   assert.equal(redactUrl("https://eth-mainnet.g.alchemy.com/v2/SECRETKEY1234567890abc"), "eth-mainnet.g.alchemy.com/…");
   assert.equal(redactUrl("https://rpc.example/?apikey=SECRET"), "rpc.example/");
 });
 
-test("call : bascule sur l'URL suivante en cas de 403, puis la garde en priorité", async () => {
+test("call: fails over to the next URL on 403, then keeps it as preferred", async () => {
   const { impl, calls } = fakeFetch((url) =>
     url.includes("bad") ? { status: 403, json: {} } : { json: { jsonrpc: "2.0", id: 1, result: "0x10" } }
   );
@@ -51,28 +51,28 @@ test("call : bascule sur l'URL suivante en cas de 403, puis la garde en priorit�
   assert.equal(await rpc.getBlockNumber(1), 16);
   assert.deepEqual(calls.map((c) => c.url), ["https://bad", "https://good"]);
   await rpc.getBlockNumber(1);
-  assert.equal(calls.at(-1).url, "https://good", "l'URL qui marche est réessayée en premier");
+  assert.equal(calls.at(-1).url, "https://good", "the working URL is tried first");
   assert.equal(calls.length, 3);
 });
 
-test("call : erreur JSON-RPC traitée comme un échec (pas comme un résultat vide)", async () => {
+test("call: a JSON-RPC error is a failure (not an empty result)", async () => {
   const { impl } = fakeFetch(() => ({ json: { error: { code: -32602, message: "A maximum of 10 addresses is allowed" } } }));
   const rpc = createRpcClient({ fetchImpl: impl, logger: quiet, resolveUrls: () => ["https://x"], maxRetries: 1, backoffMs: 0 });
   await assert.rejects(rpc.call(1, "eth_getLogs", [{}]), RpcFailure);
 });
 
-test("call : aucune URL → RpcFailure", async () => {
+test("call: no URL → RpcFailure", async () => {
   const rpc = createRpcClient({ logger: quiet, resolveUrls: () => [] });
   await assert.rejects(rpc.call(1, "eth_blockNumber", []), RpcFailure);
 });
 
-test("callSoft : renvoie null au lieu de lever", async () => {
+test("callSoft: returns null instead of throwing", async () => {
   const { impl } = fakeFetch(() => ({ status: 429, json: {} }));
   const rpc = createRpcClient({ fetchImpl: impl, logger: quiet, resolveUrls: () => ["https://x"], backoffMs: 0 });
   assert.equal(await rpc.callSoft(1, "eth_getBlockByNumber", ["0x1", false]), null);
 });
 
-test("getLogs : 14 adresses → 2 appels de ≤10 adresses, logs concaténés", async () => {
+test("getLogs: 14 addresses → 2 calls of ≤10 addresses, logs concatenated", async () => {
   const { impl, calls } = fakeFetch((_, body) => ({
     json: { result: body.params[0].address.map((a) => ({ address: a })) }
   }));
@@ -88,7 +88,7 @@ test("getLogs : 14 adresses → 2 appels de ≤10 adresses, logs concaténés", 
   assert.equal(logs.length, 14);
 });
 
-test("getLogs : si un paquet échoue, toute la plage échoue (pas de trou silencieux)", async () => {
+test("getLogs: if one batch fails, the whole range fails (no silent gap)", async () => {
   const { impl } = fakeFetch((_, body, n) =>
     n === 1 ? { json: { result: [] } } : { status: 500, json: {} }
   );
@@ -97,7 +97,7 @@ test("getLogs : si un paquet échoue, toute la plage échoue (pas de trou silenc
   await assert.rejects(rpc.getLogs(1, { fromBlock: 1, toBlock: 2, addresses, topics: [] }), RpcFailure);
 });
 
-test("LOGS_MAX_ADDRESSES configurable", async () => {
+test("LOGS_MAX_ADDRESSES is configurable", async () => {
   const { impl, calls } = fakeFetch(() => ({ json: { result: [] } }));
   const rpc = createRpcClient({ fetchImpl: impl, logger: quiet, resolveUrls: () => ["https://x"], env: { LOGS_MAX_ADDRESSES: "5" } });
   await rpc.getLogs(1, { fromBlock: 1, toBlock: 2, addresses: Array(12).fill("0x" + "1".repeat(40)), topics: [] });

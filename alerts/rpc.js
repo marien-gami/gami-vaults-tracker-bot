@@ -1,17 +1,17 @@
-// alerts/rpc.js — Client JSON-RPC multi-URL.
+// alerts/rpc.js — Multi-URL JSON-RPC client.
 //
-// - Plusieurs URLs par chain : si l'une échoue (429, 403, timeout, erreur RPC),
-//   on passe à la suivante. La dernière URL qui a répondu est réessayée en premier.
-// - eth_getLogs découpé en paquets d'adresses : beaucoup de RPC publics plafonnent
-//   le nombre d'adresses par requête (publicnode : 10).
+// - Several URLs per chain: if one fails (429, 403, timeout, RPC error), the next
+//   one is tried. The last URL that answered is tried first next time.
+// - eth_getLogs is split into address batches: many public RPCs cap the number
+//   of addresses per request (publicnode: 10).
 
 import { CHAINS } from "../chains.js";
 
 const RPC_TIMEOUT_MS = 15_000;
 
-// Erreur RPC définitive (toutes les URLs et tentatives épuisées).
-// Volontairement distincte d'un résultat vide : un appel qui ÉCHOUE ne doit
-// jamais être confondu avec "aucun event sur cette plage".
+// Definitive RPC failure (all URLs and attempts exhausted).
+// Deliberately distinct from an empty result: a FAILED call must never be
+// mistaken for "no events in this range".
 export class RpcFailure extends Error {}
 
 function splitUrls(value) {
@@ -21,7 +21,7 @@ function splitUrls(value) {
     .filter(Boolean);
 }
 
-// URLs pour une chain : RPC_URL_<chainId> (prioritaire) puis défauts de chains.js
+// URLs for a chain: RPC_URL_<chainId> (first) then chains.js defaults
 export function getRpcUrls(chainId, env = process.env) {
   const urls = [
     ...splitUrls(env[`RPC_URL_${chainId}`]),
@@ -43,14 +43,14 @@ export function chunk(arr, size) {
   return out;
 }
 
-// Masque les clés d'API éventuelles dans les URLs avant de les logger
+// Hides any API key in a URL before logging it
 export function redactUrl(url) {
   try {
     const u = new URL(url);
     const tail = u.pathname.length > 24 ? "/…" : u.pathname;
     return `${u.host}${tail}`;
   } catch {
-    return "url-invalide";
+    return "invalid-url";
   }
 }
 
@@ -65,7 +65,7 @@ export function createRpcClient({
   logger = console,
   resolveUrls = (chainId) => getRpcUrls(chainId, env)
 } = {}) {
-  // chainId → index de la dernière URL qui a répondu
+  // chainId → index of the last URL that answered
   const preferred = new Map();
 
   async function callOnce(url, method, params) {
@@ -81,16 +81,16 @@ export function createRpcClient({
     return json?.result ?? null;
   }
 
-  // Essaie chaque URL ; recommence la ronde jusqu'à maxRetries fois avec backoff.
+  // Tries every URL; repeats the round up to maxRetries times with backoff.
   async function call(chainId, method, params, { retries = maxRetries } = {}) {
     const urls = resolveUrls(chainId);
     if (urls.length === 0) {
-      throw new RpcFailure(`${method} chain ${chainId} — aucune URL RPC configurée`);
+      throw new RpcFailure(`${method} chain ${chainId} — no RPC URL configured`);
     }
     const start = preferred.get(chainId) ?? 0;
     const order = urls.map((_, i) => (start + i) % urls.length);
 
-    let lastReason = "raison inconnue";
+    let lastReason = "unknown reason";
     for (let round = 0; round <= retries; round++) {
       if (round > 0) await sleep(Math.min(backoffMs * 2 ** (round - 1), 8000));
       for (const idx of order) {
@@ -98,7 +98,7 @@ export function createRpcClient({
           const result = await callOnce(urls[idx], method, params);
           if (preferred.get(chainId) !== idx) {
             if (preferred.has(chainId)) {
-              logger.log(`🔀 Chain ${chainId} — bascule sur ${redactUrl(urls[idx])}`);
+              logger.log(`🔀 Chain ${chainId} — switched to ${redactUrl(urls[idx])}`);
             }
             preferred.set(chainId, idx);
           }
@@ -106,28 +106,28 @@ export function createRpcClient({
         } catch (err) {
           lastReason = `${redactUrl(urls[idx])}: ${err?.message ?? err}`;
           logger.warn(
-            `⚠️  RPC ${method} chain ${chainId} — ${lastReason} (ronde ${round + 1}/${retries + 1})`
+            `⚠️  RPC ${method} chain ${chainId} — ${lastReason} (round ${round + 1}/${retries + 1})`
           );
         }
       }
     }
     throw new RpcFailure(
-      `${method} chain ${chainId} — échec sur ${urls.length} URL(s) × ${retries + 1} ronde(s) (${lastReason})`
+      `${method} chain ${chainId} — failed on ${urls.length} URL(s) × ${retries + 1} round(s) (${lastReason})`
     );
   }
 
-  // Ne lève pas : pour les données non critiques (timestamp d'affichage…)
+  // Never throws: for non-critical data (display timestamp…)
   async function callSoft(chainId, method, params) {
     try {
       return await call(chainId, method, params, { retries: 0 });
     } catch (err) {
-      logger.warn(`⚠️  ${err.message} — on continue sans cette donnée`);
+      logger.warn(`⚠️  ${err.message} — continuing without this data`);
       return null;
     }
   }
 
-  // eth_getLogs sur une plage, en découpant les adresses par paquets.
-  // Lève RpcFailure si UN SEUL paquet échoue : la plage entière sera rescannée.
+  // eth_getLogs over a range, splitting addresses into batches.
+  // Throws RpcFailure if ANY batch fails: the whole range will be rescanned.
   async function getLogs(chainId, { fromBlock, toBlock, addresses, topics }) {
     const logs = [];
     for (const batch of chunk(addresses, maxAddressesPerCall)) {
@@ -138,7 +138,7 @@ export function createRpcClient({
         topics
       }]);
       if (!Array.isArray(res)) {
-        throw new RpcFailure(`eth_getLogs chain ${chainId} — réponse inattendue (${typeof res})`);
+        throw new RpcFailure(`eth_getLogs chain ${chainId} — unexpected response (${typeof res})`);
       }
       logs.push(...res);
     }

@@ -1,6 +1,6 @@
 name: CI
 
-# Valide vaults.json et lance les tests à chaque push / Pull Request.
+# Validates vaults.json and runs the tests on every push / Pull Request.
 on:
   push:
     branches: [main]

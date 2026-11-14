@@ -8,25 +8,36 @@ if (!TOKEN) {
   throw new Error("⚠️ BOT_TOKEN missing in .env");
 }
 
-export async function sendTelegramMessage(chatId, text) {
-  try {
-    const res = await fetch(`${API_URL}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML"
-      })
-    });
+// Raw Bot API call. Returns `result` or throws (with .code = error_code).
+export async function telegramApi(method, body = {}, { timeoutMs = 15_000 } = {}) {
+  const res = await fetch(`${API_URL}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    const err = new Error(`Telegram ${method}: ${data.error_code} ${data.description}`);
+    err.code = data.error_code;
+    throw err;
+  }
+  return data.result;
+}
 
-    const data = await res.json();
-    if (!data.ok) {
-      console.error("❌ Telegram error:", data);
-    } else {
-      console.log(`✅ Message sent to ${chatId}`);
-    }
+export async function sendTelegramMessage(chatId, text, extra = {}) {
+  try {
+    const result = await telegramApi("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...extra
+    });
+    console.log(`✅ Message sent to ${chatId}`);
+    return result;
   } catch (err) {
-    console.error("❌ Telegram network error:", err);
+    console.error(`❌ ${err.message}`);
+    return null;
   }
 }
