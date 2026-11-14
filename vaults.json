@@ -1,0 +1,404 @@
+[
+  {
+    "name": "Alpine BTC Flagship",
+    "address": "0x6625ba54dc861e9f5c678983dba5ba96d19a9224",
+    "chainId": 1,
+    "type": "erc4626",
+    "asset": {
+      "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "symbol": "WBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "AlpineBTC",
+      "decimals": 8
+    }
+  },
+  {
+    "name": "Alpine USDC Flagship",
+    "address": "0xd066649bcb7d8d3335fe29cad0aed6e17d5828b5",
+    "chainId": 1,
+    "type": "erc4626",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "AlpineUSDC",
+      "decimals": 6
+    }
+  },
+  {
+    "name": "Gami Stake DAO USDC",
+    "address": "0x33e1339567c183fbadcb43f72d11c47229d468ab",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamisdUSDC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami WBTC",
+    "address": "0x414070fb9e64fd69160d75da57e75ba11f9f605a",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "symbol": "WBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gamiWBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami USDC",
+    "address": "0xdae854d0896ad2fee335689a3f7b4a95fd1a3e46",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamiUSDC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami lvlUSD",
+    "address": "0x59b7942F7D2AFD085691ce65c152e0D38D4Eff22",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamilvlUSD",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami hemiBTC",
+    "address": "0x2a676c2744421b4fae65ce86b47adacb620047d4",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x06ea695B91700071B161A434fED42D1DcbAD9f00",
+      "symbol": "hemiBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gamihemiBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami ETH",
+    "address": "0x2031eceec018549a2c729cacd6c0bfc4be2524ed",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "symbol": "WETH",
+      "decimals": 18
+    },
+    "share": {
+      "symbol": "gamiETH",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami Conservative USPC",
+    "address": "0xfab0f56c28e3f874b15922b213e696f37b670916",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamicUSPC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami Leveraged USPC",
+    "address": "0x09252d2c4afca9b1479efdd39faa53de9ff23114",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamilUSPC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami Avalanche USDC",
+    "address": "0xb3a2bcb30c1460d88db18b42a29fae2399952874",
+    "chainId": 43114,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamiaUSDC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami Hemi USDC",
+    "address": "0x1e32c96757c07775ca4fc796c4f4311722eaf35e",
+    "chainId": 43111,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xad11a8beb98bbf61dbb1aa0f6d6f2ecd87b35afa",
+      "symbol": "USDC.e",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamihemiUSDC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami D1",
+    "address": "0x16b85563902556d205f5c2b4485df3d26b153f96",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamid1",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami xBTCY",
+    "address": "0x57e6824a8b15b709cefb4ccef644ba1349057e77",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+      "symbol": "cbBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "xBTCY",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro USDC",
+    "address": "0xca66317ea1e566d72fd1d333c22bb0223273226a",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gvUSDC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro USDT",
+    "address": "0x08d97f1b434d9e164218ee1dd9611290da238b79",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "symbol": "USDT",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gvUSDT",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro frxUSD",
+    "address": "0xd43c0692d6dee6e1b76a2b4cc5ca89ff579d79de",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xcacd6fd266af91b8aed52accc382b4e165586e29",
+      "symbol": "frxUSD",
+      "decimals": 18
+    },
+    "share": {
+      "symbol": "gvfrxUSD",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro WBTC",
+    "address": "0xe88f42cd673b2495b96494197bae87b4d4a5ce0d",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "symbol": "WBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gvWBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro cbBTC",
+    "address": "0x80370c23b42769d69103203d95b535541f8ffe42",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+      "symbol": "cbBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gvcbBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Vetro hemiBTC",
+    "address": "0x57637dc7a759da12865b933ee1b81eff246ec7cc",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x06ea695b91700071b161a434fed42d1dcbad9f00",
+      "symbol": "hemiBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gvhemiBTC",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami Spectra USDC Metavault",
+    "address": "0x776F95321a0285F8BCde149E3264D16DC08da69a",
+    "chainId": 8453,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamiSpectraUSDC",
+      "decimals": 6
+    }
+  },
+  {
+    "name": "Gami Spectra XRP Metavault",
+    "address": "0x6420a613e936602ca3f1ad5680b3f4d47d473bf1",
+    "chainId": 14,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xAd552A648C74D49E10027AB8a618A3ad4901c5bE",
+      "symbol": "FXRP",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamiSpectraXRP",
+      "decimals": 6
+    }
+  },
+  {
+    "name": "Gami T3tris WBTC",
+    "address": "0xd5c6c79692715145098a65d1eb1f2a10c524f8e8",
+    "chainId": 4663,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x6bac06600d220ac5ac281ad1f504d2cf0f90f6e6",
+      "symbol": "WBTC",
+      "decimals": 8
+    },
+    "share": {
+      "symbol": "gamiWBTC",
+      "decimals": 8
+    }
+  },
+  {
+    "name": "Gami MSA Def",
+    "address": "0xb725f2277f3f62ad017a6dc418433b326a9f6334",
+    "chainId": 8453,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamiMSAUSDCdef",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami MSA Dyn",
+    "address": "0xf56bfe07b8d6e6d74258cdb6969a633629b06b08",
+    "chainId": 8453,
+    "type": "erc7540",
+    "asset": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "gamiMSAUSDCdyn",
+      "decimals": 18
+    }
+  },
+  {
+    "name": "Gami Midas turtlePST (Deposit)",
+    "address": "0x95ef0179867545bea9dbdab27955551c0802307e",
+    "chainId": 1,
+    "type": "midas-deposit",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    }
+  },
+  {
+    "name": "Gami Midas turtlePST (Redeem)",
+    "address": "0xab09be3d1e02dfe1f0dbda460ff362bf1a5792fb",
+    "chainId": 1,
+    "type": "midas-redeem",
+    "asset": {
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "address": "0xc462f87f78abdd27b1e41c9ede862275d2c7f36b",
+      "symbol": "turtlePST",
+      "decimals": 18
+    }
+  }
+]

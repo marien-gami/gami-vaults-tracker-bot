@@ -1,16 +1,22 @@
 {
   "name": "gami-vaults-tracker-bot",
   "version": "1.0.0",
-  "description": "Track all deposits and withdrawals on Gami vaults using Etherscan v2",
+  "description": "Track deposits and withdrawals on Gami vaults (eth_getLogs, multi-RPC) and post them to Telegram",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test test/*.test.js",
+    "check-rpcs": "node scripts/check-rpcs.js",
+    "add-vault": "node scripts/add-vault.js"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "dotenv": "^17.2.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

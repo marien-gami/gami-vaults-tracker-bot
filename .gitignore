@@ -1,3 +1,5 @@
 node_modules
 .env
 .pointers.json
+.pointers.json.tmp
+.DS_Store
