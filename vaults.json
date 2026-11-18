@@ -400,5 +400,20 @@
       "symbol": "turtlePST",
       "decimals": 18
     }
+  },
+  {
+    "name": "Gami USDC High Yield",
+    "address": "0x9ff1883ec71d6f6990cb50575cce8ee83f9b8fed",
+    "chainId": 1,
+    "type": "erc7540",
+    "asset": {
+      "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "share": {
+      "symbol": "ghUSDC",
+      "decimals": 18
+    }
   }
 ]
